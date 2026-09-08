@@ -5,16 +5,15 @@ import './styles.css';
 new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'app',
-  width: 1280,
-  height: 720,
+  width: window.innerWidth,
+  height: window.innerHeight,
   backgroundColor: '#07111f',
   render: {
     antialias: true,
     pixelArt: false,
   },
   scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    mode: Phaser.Scale.RESIZE,
   },
   scene: [GameScene],
 });

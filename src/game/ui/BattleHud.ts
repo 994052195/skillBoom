@@ -18,20 +18,34 @@ export class BattleHud {
     const camera = this.scene.cameras.main;
     const width = camera.width;
     const height = camera.height;
-    const left = 52;
-    const bottom = height - 28;
-    const minimapSize = 132;
-    const minimapX = width - minimapSize - 28;
-    const minimapY = height - minimapSize - 28;
+    const compact = width < 720;
+    const left = compact ? 34 : 52;
+    const barWidth = compact ? Math.max(150, Math.floor(width * 0.52)) : 256;
+    const slotSize = compact ? Math.min(50, Math.max(42, Math.floor((width - 48) / 4))) : 58;
+    const slotGap = compact ? 8 : 16;
+    const skillWidth = slotSize * 4 + slotGap * 3;
+    const skillLeft = compact ? Math.max(18, width - skillWidth - 18) : left;
+    const bottom = height - (compact ? 18 : 28);
+    const minimapSize = compact ? Math.min(108, Math.max(80, Math.floor(width * 0.27))) : 132;
+    const minimapX = width - minimapSize - (compact ? 16 : 28);
+    const minimapY = compact
+      ? Math.max(88, height - minimapSize - slotSize - 38)
+      : height - minimapSize - 28;
 
     this.graphics.clear();
-    this.drawTopBars(left, healthRatio, experienceRatio);
-    this.drawSkillSlots(left, bottom);
+    this.drawTopBars(left, barWidth, healthRatio, experienceRatio, compact);
+    this.drawSkillSlots(skillLeft, bottom, slotSize, slotGap);
     this.drawMiniMap(minimapX, minimapY, minimapSize);
 
-    this.timeText.setPosition(width / 2 - 42, 22).setText(formatTime(elapsedMs));
-    this.killText.setPosition(width / 2 + 53, 25).setText(`KILLS ${kills}`);
-    this.levelText.setPosition(left - 48, 72).setText(`LV. ${level}`);
+    if (compact) {
+      this.timeText.setFontSize(15).setPosition(width - 100, 23).setText(formatTime(elapsedMs));
+      this.killText.setFontSize(14).setPosition(width - 100, 48).setText(`KILLS ${kills}`);
+      this.levelText.setFontSize(14).setPosition(8, 73).setText(`LV. ${level}`);
+    } else {
+      this.timeText.setFontSize(24).setPosition(width / 2 - 42, 22).setText(formatTime(elapsedMs));
+      this.killText.setFontSize(24).setPosition(width / 2 + 53, 25).setText(`KILLS ${kills}`);
+      this.levelText.setFontSize(24).setPosition(left - 48, 72).setText(`LV. ${level}`);
+    }
   }
 
   public destroy(): void {
@@ -41,8 +55,13 @@ export class BattleHud {
     this.levelText.destroy();
   }
 
-  private drawTopBars(left: number, healthRatio: number, experienceRatio: number): void {
-    const barWidth = 256;
+  private drawTopBars(
+    left: number,
+    barWidth: number,
+    healthRatio: number,
+    experienceRatio: number,
+    compact: boolean,
+  ): void {
     this.graphics.lineStyle(2, NEON_COLORS.hud, 0.8);
     this.graphics.strokeRoundedRect(left, 28, barWidth, 18, 2);
     this.graphics.fillStyle(NEON_COLORS.health, 0.9);
@@ -52,34 +71,40 @@ export class BattleHud {
     this.graphics.fillStyle(NEON_COLORS.experience, 0.8);
     this.graphics.fillRect(left + 3, 58, (barWidth - 6) * experienceRatio, 4);
     this.graphics.lineStyle(2, NEON_COLORS.hud, 0.85);
-    this.graphics.strokeCircle(left - 27, 46, 22);
+    this.graphics.strokeCircle(left - (compact ? 20 : 27), 46, compact ? 17 : 22);
     this.graphics.fillStyle(NEON_COLORS.player, 1);
-    this.graphics.fillTriangle(left - 34, 53, left - 18, 46, left - 34, 39);
+    if (compact) {
+      this.graphics.fillTriangle(left - 25, 52, left - 12, 46, left - 25, 40);
+    } else {
+      this.graphics.fillTriangle(left - 34, 53, left - 18, 46, left - 34, 39);
+    }
   }
 
-  private drawSkillSlots(left: number, bottom: number): void {
+  private drawSkillSlots(left: number, bottom: number, size: number, gap: number): void {
     const colors = [NEON_COLORS.projectile, NEON_COLORS.player, NEON_COLORS.experience, NEON_COLORS.health];
     for (let index = 0; index < 4; index += 1) {
-      const x = left + index * 74;
-      const y = bottom - 60;
+      const x = left + index * (size + gap);
+      const y = bottom - size;
+      const inset = Math.max(2, Math.round(size * 0.05));
+      const center = size / 2;
       this.graphics.lineStyle(2, colors[index], 0.9);
-      this.graphics.strokeRoundedRect(x, y, 58, 58, 3);
+      this.graphics.strokeRoundedRect(x, y, size, size, 3);
       this.graphics.fillStyle(colors[index], 0.14);
-      this.graphics.fillRoundedRect(x + 3, y + 3, 52, 52, 2);
+      this.graphics.fillRoundedRect(x + inset, y + inset, size - inset * 2, size - inset * 2, 2);
       this.graphics.fillStyle(colors[index], 0.92);
       if (index === 0) {
-        this.graphics.fillTriangle(x + 16, y + 42, x + 43, y + 29, x + 16, y + 17);
+        this.graphics.fillTriangle(x + size * 0.28, y + size * 0.72, x + size * 0.74, y + center, x + size * 0.28, y + size * 0.28);
       } else if (index === 1) {
-        this.graphics.fillCircle(x + 29, y + 29, 13);
+        this.graphics.fillCircle(x + center, y + center, size * 0.22);
         this.graphics.lineStyle(3, 0xffffff, 0.9);
-        this.graphics.strokeCircle(x + 29, y + 29, 19);
+        this.graphics.strokeCircle(x + center, y + center, size * 0.33);
       } else if (index === 2) {
-        this.graphics.fillCircle(x + 29, y + 29, 14);
+        this.graphics.fillCircle(x + center, y + center, size * 0.24);
         this.graphics.fillStyle(0x07111f, 1);
-        this.graphics.fillCircle(x + 29, y + 29, 6);
+        this.graphics.fillCircle(x + center, y + center, size * 0.1);
       } else {
-        this.graphics.fillRect(x + 25, y + 14, 8, 30);
-        this.graphics.fillRect(x + 14, y + 25, 30, 8);
+        this.graphics.fillRect(x + size * 0.43, y + size * 0.24, size * 0.14, size * 0.52);
+        this.graphics.fillRect(x + size * 0.24, y + size * 0.43, size * 0.52, size * 0.14);
       }
     }
   }

@@ -13,6 +13,7 @@ import { UpgradeSystem } from '../systems/UpgradeSystem';
 import type { PlayerInput, UpgradeId } from '../types';
 import { BattleOverlay } from '../ui/BattleOverlay';
 import { BattleHud } from '../ui/BattleHud';
+import { TouchControls } from '../ui/TouchControls';
 
 type MovementKeys = Record<keyof PlayerInput, Phaser.Input.Keyboard.Key>;
 type ActionKeys = Record<'first' | 'second' | 'third' | 'restart', Phaser.Input.Keyboard.Key>;
@@ -22,6 +23,7 @@ export class GameScene extends Phaser.Scene {
   private player!: Player;
   private hud!: BattleHud;
   private overlay!: BattleOverlay;
+  private touchControls!: TouchControls;
   private readonly enemies: Enemy[] = [];
   private readonly projectiles: Projectile[] = [];
   private readonly experienceOrbs: ExperienceOrb[] = [];
@@ -68,14 +70,19 @@ export class GameScene extends Phaser.Scene {
 
     this.hud = new BattleHud(this);
     this.overlay = new BattleOverlay(this);
-    this.hud.update(this.player.healthRatio, this.elapsedMs, this.kills, this.upgradeSystem.experienceRatio, this.upgradeSystem.currentLevel);
+    this.touchControls = new TouchControls(this);
+    this.refreshFixedUi();
+    this.scale.on('resize', this.refreshFixedUi, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('resize', this.refreshFixedUi, this);
       this.hud.destroy();
       this.overlay.destroy();
+      this.touchControls.destroy();
     });
   }
 
   public update(_time: number, delta: number): void {
+    this.touchControls.refresh();
     if (this.state === 'game-over') {
       if (Phaser.Input.Keyboard.JustDown(this.actionKeys.restart)) {
         this.scene.restart();
@@ -161,11 +168,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private readInput(): PlayerInput {
+    const touchInput = this.touchControls.playerInput;
     return {
-      up: this.keys.up.isDown,
-      down: this.keys.down.isDown,
-      left: this.keys.left.isDown,
-      right: this.keys.right.isDown,
+      up: this.keys.up.isDown || touchInput.up,
+      down: this.keys.down.isDown || touchInput.down,
+      left: this.keys.left.isDown || touchInput.left,
+      right: this.keys.right.isDown || touchInput.right,
     };
   }
 
@@ -244,6 +252,7 @@ export class GameScene extends Phaser.Scene {
 
   private enterUpgradeChoice(): void {
     this.state = 'choosing-upgrade';
+    this.touchControls.setEnabled(false);
     this.overlay.showUpgrade(this.upgradeSystem.availableUpgrades, (id) => this.selectUpgrade(id));
   }
 
@@ -274,11 +283,37 @@ export class GameScene extends Phaser.Scene {
 
     this.state = 'playing';
     this.overlay.hide();
+    this.touchControls.setEnabled(true);
   }
 
   private enterGameOver(): void {
     this.state = 'game-over';
+    this.touchControls.setEnabled(false);
     this.overlay.showGameOver(this.elapsedMs, this.kills, () => this.scene.restart());
+  }
+
+  private refreshFixedUi(): void {
+    if (this.player === undefined || this.hud === undefined || this.overlay === undefined) {
+      return;
+    }
+
+    this.hud.update(
+      this.player.healthRatio,
+      this.elapsedMs,
+      this.kills,
+      this.upgradeSystem.experienceRatio,
+      this.upgradeSystem.currentLevel,
+    );
+
+    if (this.state === 'choosing-upgrade') {
+      this.overlay.showUpgrade(this.upgradeSystem.availableUpgrades, (id) => this.selectUpgrade(id));
+    } else if (this.state === 'game-over') {
+      this.overlay.showGameOver(this.elapsedMs, this.kills, () => this.scene.restart());
+    }
+
+    if (this.touchControls !== undefined) {
+      this.touchControls.refresh();
+    }
   }
 
   private resetRun(): void {

@@ -10,18 +10,32 @@ export class BattleOverlay {
   public showUpgrade(choices: readonly UpgradeDefinition[], onSelect: (id: UpgradeId) => void): void {
     this.clear();
     const { width, height } = this.scene.cameras.main;
+    const stacked = width < 480 || height > width;
+    const compact = height < 620 || stacked;
+    const titleY = compact ? 42 : 118;
+    const subtitleY = compact ? 76 : 164;
     this.addScrim(width, height);
-    this.addText(width / 2, 118, '等级提升', 38, NEON_COLORS.experience);
-    this.addText(width / 2, 164, '选择一项强化', 18, 0xd9faff);
+    this.addText(width / 2, titleY, '等级提升', compact ? 28 : 38, NEON_COLORS.experience);
+    this.addText(width / 2, subtitleY, '选择一项强化', compact ? 16 : 18, 0xd9faff);
 
-    const cardWidth = 280;
-    const cardHeight = 236;
-    const gap = 20;
-    const startX = width / 2 - ((cardWidth * choices.length + gap * (choices.length - 1)) / 2);
+    const gap = stacked ? 10 : 20;
+    const cardWidth = stacked
+      ? Math.min(420, width - 32)
+      : Math.min(280, (width - 96) / choices.length);
+    const cardHeight = stacked
+      ? Math.max(98, Math.min(132, Math.floor((height - subtitleY - 32 - gap * (choices.length - 1)) / choices.length)))
+      : Math.min(236, Math.max(158, height - 232));
+    const totalHeight = cardHeight * choices.length + gap * (choices.length - 1);
+    const startX = stacked
+      ? width / 2 - cardWidth / 2
+      : width / 2 - ((cardWidth * choices.length + gap * (choices.length - 1)) / 2);
+    const startY = stacked
+      ? Math.max(subtitleY + 24, Math.min(height - totalHeight - 16, subtitleY + 30))
+      : Math.max(subtitleY + 30, height / 2 - cardHeight / 2 + 32);
 
     choices.forEach((choice, index) => {
-      const x = startX + index * (cardWidth + gap);
-      const y = height / 2 - cardHeight / 2 + 32;
+      const x = stacked ? startX : startX + index * (cardWidth + gap);
+      const y = stacked ? startY + index * (cardHeight + gap) : startY;
       const card = this.scene.add.rectangle(x, y, cardWidth, cardHeight, 0x0b1d31, 0.98)
         .setOrigin(0, 0)
         .setStrokeStyle(2, NEON_COLORS.experience, 0.9)
@@ -30,16 +44,23 @@ export class BattleOverlay {
         .setInteractive({ useHandCursor: true });
       this.objects.push(card);
 
-      const key = this.addText(x + 26, y + 26, `${index + 1}`, 18, NEON_COLORS.projectile, 0);
+      const key = this.addText(x + 22, y + 24, `${index + 1}`, compact ? 16 : 18, NEON_COLORS.projectile, 0);
       key.setOrigin(0, 0.5);
-      const name = this.addText(x + cardWidth / 2, y + 87, choice.name, 25, NEON_COLORS.hud);
-      const description = this.scene.add.text(x + cardWidth / 2, y + 132, choice.description, {
+      const name = this.addText(
+        stacked ? x + 52 : x + cardWidth / 2,
+        stacked ? y + 24 : y + cardHeight * 0.37,
+        choice.name,
+        compact ? 20 : 25,
+        NEON_COLORS.hud,
+        stacked ? 0 : 0.5,
+      );
+      const description = this.scene.add.text(stacked ? x + 22 : x + cardWidth / 2, stacked ? y + 52 : y + cardHeight * 0.57, choice.description, {
         align: 'center',
         color: '#d9faff',
         fontFamily: 'Segoe UI, sans-serif',
-        fontSize: '18px',
-        wordWrap: { width: cardWidth - 60 },
-      }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(2001);
+        fontSize: compact ? '16px' : '18px',
+        wordWrap: { width: cardWidth - (stacked ? 44 : 60) },
+      }).setOrigin(stacked ? 0 : 0.5, 0).setScrollFactor(0).setDepth(2001);
       this.objects.push(name, description);
 
       card.on('pointerover', () => card.setFillStyle(0x123c56, 1));
@@ -51,17 +72,20 @@ export class BattleOverlay {
   public showGameOver(survivalMs: number, kills: number, onRestart: () => void): void {
     this.clear();
     const { width, height } = this.scene.cameras.main;
+    const compact = width < 720 || height < 520;
+    const titleY = height / 2 - (compact ? 92 : 124);
     this.addScrim(width, height);
-    this.addText(width / 2, height / 2 - 124, '战斗结束', 42, NEON_COLORS.health);
-    this.addText(width / 2, height / 2 - 62, `存活时间  ${formatTime(survivalMs)}`, 22, 0xd9faff);
-    this.addText(width / 2, height / 2 - 24, `击败敌人  ${kills}`, 22, 0xd9faff);
+    this.addText(width / 2, titleY, '战斗结束', compact ? 32 : 42, NEON_COLORS.health);
+    this.addText(width / 2, titleY + 50, `存活时间  ${formatTime(survivalMs)}`, compact ? 18 : 22, 0xd9faff);
+    this.addText(width / 2, titleY + 84, `击败敌人  ${kills}`, compact ? 18 : 22, 0xd9faff);
 
-    const button = this.scene.add.rectangle(width / 2, height / 2 + 62, 232, 58, NEON_COLORS.hud, 0.2)
+    const buttonY = titleY + (compact ? 142 : 186);
+    const button = this.scene.add.rectangle(width / 2, buttonY, compact ? Math.min(260, width - 48) : 232, 58, NEON_COLORS.hud, 0.2)
       .setStrokeStyle(2, NEON_COLORS.hud, 1)
       .setScrollFactor(0)
       .setDepth(2001)
       .setInteractive({ useHandCursor: true });
-    const label = this.addText(width / 2, height / 2 + 62, '重新开始  [R]', 20, NEON_COLORS.hud);
+    const label = this.addText(width / 2, buttonY, compact ? '重新开始' : '重新开始  [R]', 20, NEON_COLORS.hud);
     this.objects.push(button, label);
     button.on('pointerover', () => button.setFillStyle(NEON_COLORS.hud, 0.38));
     button.on('pointerout', () => button.setFillStyle(NEON_COLORS.hud, 0.2));
