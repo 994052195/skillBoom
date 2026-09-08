@@ -3,19 +3,34 @@ import { GAME_BALANCE, NEON_COLORS } from '../config';
 import { circlesOverlap } from '../combat/collision';
 import type { Targetable, WorldBounds } from '../types';
 
+interface ProjectileOptions {
+  damage?: number;
+  speed?: number;
+  angleOffset?: number;
+}
+
 export class Projectile extends Phaser.GameObjects.Graphics implements Targetable {
   public readonly radius = GAME_BALANCE.projectileRadius;
+  public readonly damage: number;
   private readonly velocityX: number;
   private readonly velocityY: number;
   private activeProjectile = true;
 
-  public constructor(scene: Phaser.Scene, x: number, y: number, targetX: number, targetY: number) {
+  public constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    targetX: number,
+    targetY: number,
+    { damage = GAME_BALANCE.projectileDamage, speed = GAME_BALANCE.projectileSpeed, angleOffset = 0 }: ProjectileOptions = {},
+  ) {
     super(scene);
     const distanceX = targetX - x;
     const distanceY = targetY - y;
-    const length = Math.max(Math.hypot(distanceX, distanceY), 1);
-    this.velocityX = (distanceX / length) * GAME_BALANCE.projectileSpeed;
-    this.velocityY = (distanceY / length) * GAME_BALANCE.projectileSpeed;
+    const angle = Math.atan2(distanceY, distanceX) + angleOffset;
+    this.damage = damage;
+    this.velocityX = Math.cos(angle) * speed;
+    this.velocityY = Math.sin(angle) * speed;
     this.setPosition(x, y);
     this.setDepth(15);
     scene.add.existing(this);

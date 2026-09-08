@@ -1,7 +1,9 @@
 export class Health {
   private value: number;
+  private maximum: number;
 
-  public constructor(private readonly maximum: number) {
+  public constructor(maximum: number) {
+    this.maximum = maximum;
     this.value = maximum;
   }
 
@@ -28,5 +30,14 @@ export class Health {
 
     this.value = Math.max(0, this.value - amount);
     return !this.isAlive();
+  }
+
+  public increaseMaximum(amount: number, healAmount = amount): void {
+    if (amount <= 0) {
+      return;
+    }
+
+    this.maximum += amount;
+    this.value = Math.min(this.maximum, this.value + Math.max(healAmount, 0));
   }
 }

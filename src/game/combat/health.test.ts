@@ -16,4 +16,14 @@ describe('Health', () => {
     expect(health.takeDamage(-10)).toBe(false);
     expect(health.current).toBe(40);
   });
+
+  it('raises maximum health and restores the requested amount', () => {
+    const health = new Health(40);
+    health.takeDamage(30);
+
+    health.increaseMaximum(25);
+
+    expect(health.max).toBe(65);
+    expect(health.current).toBe(35);
+  });
 });

@@ -5,14 +5,16 @@ export class BattleHud {
   private readonly graphics: Phaser.GameObjects.Graphics;
   private readonly timeText: Phaser.GameObjects.Text;
   private readonly killText: Phaser.GameObjects.Text;
+  private readonly levelText: Phaser.GameObjects.Text;
 
   public constructor(private readonly scene: Phaser.Scene) {
     this.graphics = scene.add.graphics().setScrollFactor(0).setDepth(1000);
     this.timeText = this.createText('00:00');
     this.killText = this.createText('KILLS 0');
+    this.levelText = this.createText('LV. 1');
   }
 
-  public update(healthRatio: number, elapsedMs: number, kills: number): void {
+  public update(healthRatio: number, elapsedMs: number, kills: number, experienceRatio: number, level: number): void {
     const camera = this.scene.cameras.main;
     const width = camera.width;
     const height = camera.height;
@@ -23,21 +25,23 @@ export class BattleHud {
     const minimapY = height - minimapSize - 28;
 
     this.graphics.clear();
-    this.drawTopBars(left, healthRatio);
+    this.drawTopBars(left, healthRatio, experienceRatio);
     this.drawSkillSlots(left, bottom);
     this.drawMiniMap(minimapX, minimapY, minimapSize);
 
     this.timeText.setPosition(width / 2 - 42, 22).setText(formatTime(elapsedMs));
     this.killText.setPosition(width / 2 + 53, 25).setText(`KILLS ${kills}`);
+    this.levelText.setPosition(left - 48, 72).setText(`LV. ${level}`);
   }
 
   public destroy(): void {
     this.graphics.destroy();
     this.timeText.destroy();
     this.killText.destroy();
+    this.levelText.destroy();
   }
 
-  private drawTopBars(left: number, healthRatio: number): void {
+  private drawTopBars(left: number, healthRatio: number, experienceRatio: number): void {
     const barWidth = 256;
     this.graphics.lineStyle(2, NEON_COLORS.hud, 0.8);
     this.graphics.strokeRoundedRect(left, 28, barWidth, 18, 2);
@@ -46,7 +50,7 @@ export class BattleHud {
     this.graphics.lineStyle(2, NEON_COLORS.experience, 0.75);
     this.graphics.strokeRoundedRect(left, 55, barWidth, 10, 2);
     this.graphics.fillStyle(NEON_COLORS.experience, 0.8);
-    this.graphics.fillRect(left + 3, 58, (barWidth - 6) * 0.44, 4);
+    this.graphics.fillRect(left + 3, 58, (barWidth - 6) * experienceRatio, 4);
     this.graphics.lineStyle(2, NEON_COLORS.hud, 0.85);
     this.graphics.strokeCircle(left - 27, 46, 22);
     this.graphics.fillStyle(NEON_COLORS.player, 1);

@@ -3,7 +3,7 @@ import { GAME_BALANCE, NEON_COLORS } from '../config';
 import { Health } from '../combat/health';
 import { clampPosition, getMovementVector } from '../combat/movement';
 import { findClosestTarget } from '../combat/targeting';
-import type { Damageable, PlayerInput, Targetable, WorldBounds } from '../types';
+import type { Damageable, PlayerInput, Targetable, UpgradeId, WorldBounds } from '../types';
 import { Projectile } from './Projectile';
 
 export class Player extends Phaser.GameObjects.Graphics implements Damageable, Targetable {
@@ -11,6 +11,11 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
   private readonly healthState = new Health(GAME_BALANCE.playerHealth);
   private lastAttackAt = Number.NEGATIVE_INFINITY;
   private lastDamageAt = Number.NEGATIVE_INFINITY;
+  private moveSpeed: number = GAME_BALANCE.playerSpeed;
+  private attackIntervalMs: number = GAME_BALANCE.playerAttackIntervalMs;
+  private projectileDamage: number = GAME_BALANCE.projectileDamage;
+  private projectileSpeed: number = GAME_BALANCE.projectileSpeed;
+  private projectileCount: number = 1;
 
   public constructor(
     scene: Phaser.Scene,
@@ -41,12 +46,12 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
     return this.healthState.isAlive();
   }
 
-  public update(deltaMs: number, input: PlayerInput, enemies: readonly Targetable[], nowMs: number): Projectile | null {
+  public update(deltaMs: number, input: PlayerInput, enemies: readonly Targetable[], nowMs: number): Projectile[] {
     if (!this.isAlive()) {
-      return null;
+      return [];
     }
 
-    const movement = getMovementVector(input, GAME_BALANCE.playerSpeed);
+    const movement = getMovementVector(input, this.moveSpeed);
     const nextPosition = clampPosition(
       { x: this.x + movement.x * (deltaMs / 1000), y: this.y + movement.y * (deltaMs / 1000) },
       this.bounds,
@@ -56,17 +61,17 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
     this.setPosition(nextPosition.x, nextPosition.y);
     this.setAlpha(nowMs - this.lastDamageAt < 90 ? 0.45 : 1);
 
-    if (nowMs - this.lastAttackAt < GAME_BALANCE.playerAttackIntervalMs) {
-      return null;
+    if (nowMs - this.lastAttackAt < this.attackIntervalMs) {
+      return [];
     }
 
     const target = findClosestTarget(this, enemies);
     if (target === null) {
-      return null;
+      return [];
     }
 
     this.lastAttackAt = nowMs;
-    return new Projectile(this.scene, this.x, this.y, target.x, target.y);
+    return this.fireAt(target);
   }
 
   public receiveContactDamage(amount: number, nowMs: number): boolean {
@@ -84,6 +89,46 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
     const died = this.healthState.takeDamage(amount);
     this.redraw();
     return died;
+  }
+
+  public applyUpgrade(upgrade: UpgradeId): void {
+    switch (upgrade) {
+      case 'rapid-fire':
+        this.attackIntervalMs = Math.max(120, Math.round(this.attackIntervalMs * 0.88));
+        break;
+      case 'power-shot':
+        this.projectileDamage += 10;
+        break;
+      case 'multishot':
+        this.projectileCount += 1;
+        break;
+      case 'swift-projectiles':
+        this.projectileSpeed = Math.round(this.projectileSpeed * 1.16);
+        break;
+      case 'quickstep':
+        this.moveSpeed = Math.round(this.moveSpeed * 1.12);
+        break;
+      case 'vital-core':
+        this.healthState.increaseMaximum(25);
+        this.redraw();
+        break;
+    }
+  }
+
+  private fireAt(target: Targetable): Projectile[] {
+    const spread = Phaser.Math.DegToRad(12);
+    const midpoint = (this.projectileCount - 1) / 2;
+    const projectiles: Projectile[] = [];
+
+    for (let index = 0; index < this.projectileCount; index += 1) {
+      projectiles.push(new Projectile(this.scene, this.x, this.y, target.x, target.y, {
+        damage: this.projectileDamage,
+        speed: this.projectileSpeed,
+        angleOffset: (index - midpoint) * spread,
+      }));
+    }
+
+    return projectiles;
   }
 
   private redraw(): void {

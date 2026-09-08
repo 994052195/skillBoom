@@ -35,3 +35,11 @@ export interface EnemySpawn {
   y: number;
   kind: EnemyKind;
 }
+
+export type UpgradeId = 'rapid-fire' | 'power-shot' | 'multishot' | 'swift-projectiles' | 'quickstep' | 'vital-core';
+
+export interface UpgradeDefinition {
+  id: UpgradeId;
+  name: string;
+  description: string;
+}

@@ -30,6 +30,12 @@ export class Enemy extends Phaser.GameObjects.Graphics implements Damageable, Ta
     return this.healthState.current;
   }
 
+  public get experienceValue(): number {
+    return this.kind === 'ember-buff' || this.kind === 'crystal-buff'
+      ? GAME_BALANCE.buffExperience
+      : GAME_BALANCE.minionExperience;
+  }
+
   public isAlive(): boolean {
     return this.healthState.isAlive();
   }

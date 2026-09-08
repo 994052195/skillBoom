@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { circlesOverlap } from '../combat/collision';
 import { GAME_BALANCE, NEON_COLORS, WORLD_BOUNDS } from '../config';
 import { Enemy } from '../entities/Enemy';
+import { ExperienceOrb } from '../entities/ExperienceOrb';
 import { Player } from '../entities/Player';
 import { Projectile } from '../entities/Projectile';
 import { EnemySpawner } from '../spawning/EnemySpawner';
@@ -9,26 +10,36 @@ import { SkillSystem } from '../systems/SkillSystem';
 import { StatusSystem } from '../systems/StatusSystem';
 import type { GameSystem } from '../systems/GameSystem';
 import { UpgradeSystem } from '../systems/UpgradeSystem';
-import type { PlayerInput } from '../types';
+import type { PlayerInput, UpgradeId } from '../types';
+import { BattleOverlay } from '../ui/BattleOverlay';
 import { BattleHud } from '../ui/BattleHud';
 
 type MovementKeys = Record<keyof PlayerInput, Phaser.Input.Keyboard.Key>;
+type ActionKeys = Record<'first' | 'second' | 'third' | 'restart', Phaser.Input.Keyboard.Key>;
+type GameState = 'playing' | 'choosing-upgrade' | 'game-over';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private hud!: BattleHud;
+  private overlay!: BattleOverlay;
   private readonly enemies: Enemy[] = [];
   private readonly projectiles: Projectile[] = [];
-  private readonly spawner = new EnemySpawner();
-  private readonly systems: GameSystem[] = [new SkillSystem(), new UpgradeSystem(), new StatusSystem()];
+  private readonly experienceOrbs: ExperienceOrb[] = [];
+  private spawner = new EnemySpawner();
+  private upgradeSystem = new UpgradeSystem();
+  private systems: GameSystem[] = [];
   private keys!: MovementKeys;
+  private actionKeys!: ActionKeys;
   private kills = 0;
+  private elapsedMs = 0;
+  private state: GameState = 'playing';
 
   public constructor() {
     super('game');
   }
 
   public create(): void {
+    this.resetRun();
     this.cameras.main.setBackgroundColor(NEON_COLORS.world);
     this.cameras.main.setBounds(WORLD_BOUNDS.x, WORLD_BOUNDS.y, WORLD_BOUNDS.width, WORLD_BOUNDS.height);
     this.createArena();
@@ -48,23 +59,47 @@ export class GameScene extends Phaser.Scene {
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as MovementKeys;
+    this.actionKeys = keyboard.addKeys({
+      first: Phaser.Input.Keyboard.KeyCodes.ONE,
+      second: Phaser.Input.Keyboard.KeyCodes.TWO,
+      third: Phaser.Input.Keyboard.KeyCodes.THREE,
+      restart: Phaser.Input.Keyboard.KeyCodes.R,
+    }) as ActionKeys;
 
     this.hud = new BattleHud(this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.hud.destroy());
+    this.overlay = new BattleOverlay(this);
+    this.hud.update(this.player.healthRatio, this.elapsedMs, this.kills, this.upgradeSystem.experienceRatio, this.upgradeSystem.currentLevel);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.hud.destroy();
+      this.overlay.destroy();
+    });
   }
 
-  public update(time: number, delta: number): void {
+  public update(_time: number, delta: number): void {
+    if (this.state === 'game-over') {
+      if (Phaser.Input.Keyboard.JustDown(this.actionKeys.restart)) {
+        this.scene.restart();
+      }
+      return;
+    }
+
+    if (this.state === 'choosing-upgrade') {
+      this.selectUpgradeFromKeyboard();
+      return;
+    }
+
+    this.elapsedMs += delta;
     for (const system of this.systems) {
       system.update(delta);
     }
 
     if (this.player.isAlive()) {
-      const projectile = this.player.update(delta, this.readInput(), this.enemies, time);
-      if (projectile !== null) {
-        this.projectiles.push(projectile);
+      const projectiles = this.player.update(delta, this.readInput(), this.enemies, this.elapsedMs);
+      if (projectiles.length > 0) {
+        this.projectiles.push(...projectiles);
       }
 
-      const spawn = this.spawner.update(time, this.player, WORLD_BOUNDS, this.enemies.length);
+      const spawn = this.spawner.update(this.elapsedMs, this.player, WORLD_BOUNDS, this.enemies.length);
       if (spawn !== null) {
         this.enemies.push(new Enemy(this, spawn.x, spawn.y, spawn.kind));
       }
@@ -78,10 +113,33 @@ export class GameScene extends Phaser.Scene {
       projectile.update(delta);
     }
 
-    this.resolveContactDamage(time);
+    this.resolveContactDamage(this.elapsedMs);
     this.resolveProjectileHits();
+    if (!this.player.isAlive()) {
+      this.hud.update(
+        this.player.healthRatio,
+        this.elapsedMs,
+        this.kills,
+        this.upgradeSystem.experienceRatio,
+        this.upgradeSystem.currentLevel,
+      );
+      this.enterGameOver();
+      return;
+    }
+
+    this.collectExperience(delta);
     this.removeInactiveEntities();
-    this.hud.update(this.player.healthRatio, time, this.kills);
+    this.hud.update(
+      this.player.healthRatio,
+      this.elapsedMs,
+      this.kills,
+      this.upgradeSystem.experienceRatio,
+      this.upgradeSystem.currentLevel,
+    );
+
+    if (this.upgradeSystem.isChoosing) {
+      this.enterUpgradeChoice();
+    }
   }
 
   private createArena(): void {
@@ -134,10 +192,11 @@ export class GameScene extends Phaser.Scene {
           continue;
         }
 
-        const killed = enemy.takeDamage(GAME_BALANCE.projectileDamage);
+        const killed = enemy.takeDamage(projectile.damage);
         projectile.consume();
         if (killed) {
           this.kills += 1;
+          this.experienceOrbs.push(new ExperienceOrb(this, enemy.x, enemy.y, enemy.experienceValue));
         }
         break;
       }
@@ -158,5 +217,79 @@ export class GameScene extends Phaser.Scene {
         this.projectiles.splice(index, 1);
       }
     }
+
+    for (let index = this.experienceOrbs.length - 1; index >= 0; index -= 1) {
+      if (!this.experienceOrbs[index].isAlive()) {
+        this.experienceOrbs[index].destroy();
+        this.experienceOrbs.splice(index, 1);
+      }
+    }
+  }
+
+  private collectExperience(delta: number): void {
+    for (let index = this.experienceOrbs.length - 1; index >= 0; index -= 1) {
+      const orb = this.experienceOrbs[index];
+      orb.update(delta, this.player);
+      if (!orb.canCollectWith(this.player)) {
+        continue;
+      }
+
+      orb.collect();
+      this.upgradeSystem.addExperience(orb.value);
+      if (this.upgradeSystem.isChoosing) {
+        break;
+      }
+    }
+  }
+
+  private enterUpgradeChoice(): void {
+    this.state = 'choosing-upgrade';
+    this.overlay.showUpgrade(this.upgradeSystem.availableUpgrades, (id) => this.selectUpgrade(id));
+  }
+
+  private selectUpgradeFromKeyboard(): void {
+    const keys = [this.actionKeys.first, this.actionKeys.second, this.actionKeys.third];
+    const index = keys.findIndex((key) => Phaser.Input.Keyboard.JustDown(key));
+    if (index < 0) {
+      return;
+    }
+
+    const choice = this.upgradeSystem.availableUpgrades[index];
+    if (choice !== undefined) {
+      this.selectUpgrade(choice.id);
+    }
+  }
+
+  private selectUpgrade(id: UpgradeId): void {
+    const selected = this.upgradeSystem.selectUpgrade(id);
+    if (selected === null) {
+      return;
+    }
+
+    this.player.applyUpgrade(selected.id);
+    if (this.upgradeSystem.isChoosing) {
+      this.overlay.showUpgrade(this.upgradeSystem.availableUpgrades, (choiceId) => this.selectUpgrade(choiceId));
+      return;
+    }
+
+    this.state = 'playing';
+    this.overlay.hide();
+  }
+
+  private enterGameOver(): void {
+    this.state = 'game-over';
+    this.overlay.showGameOver(this.elapsedMs, this.kills, () => this.scene.restart());
+  }
+
+  private resetRun(): void {
+    this.enemies.length = 0;
+    this.projectiles.length = 0;
+    this.experienceOrbs.length = 0;
+    this.spawner = new EnemySpawner();
+    this.upgradeSystem = new UpgradeSystem();
+    this.systems = [new SkillSystem(), this.upgradeSystem, new StatusSystem()];
+    this.kills = 0;
+    this.elapsedMs = 0;
+    this.state = 'playing';
   }
 }
