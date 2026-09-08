@@ -1,0 +1,32 @@
+:root {
+  background: #03070d;
+  color: #d9faff;
+  font-family: "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  min-height: 100vh;
+  overflow: hidden;
+  place-items: center;
+  background: #03070d;
+}
+
+canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100vh;
+}
