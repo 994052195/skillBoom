@@ -1,10 +1,16 @@
 import Phaser from 'phaser';
-import { NEON_COLORS, WORLD_BOUNDS } from '../config';
-import type { CombatStats } from '../types';
+import { NEON_COLORS } from '../config';
+import type { CombatStats, Vector2Like } from '../types';
 import { statsFor } from '../systems/upgrades';
+import { minimapMarkers, type MinimapEnemy } from './minimap';
+export { worldToMiniMap } from './minimap';
 
 export class BattleHud {
   private readonly graphics: Phaser.GameObjects.Graphics;
+  private readonly mapGraphics: Phaser.GameObjects.Graphics;
+  private drawKey = '';
+  private nextMapAt = 0;
+  private mapBounds = { x: 0, y: 0, size: 0 };
   private readonly timeText: Phaser.GameObjects.Text;
   private readonly killText: Phaser.GameObjects.Text;
   private readonly levelText: Phaser.GameObjects.Text;
@@ -14,6 +20,7 @@ export class BattleHud {
 
   public constructor(private readonly scene: Phaser.Scene) {
     this.graphics = scene.add.graphics().setScrollFactor(0).setDepth(1000);
+    this.mapGraphics = scene.add.graphics().setScrollFactor(0).setDepth(1000);
     this.timeText = this.createText('00:00');
     this.killText = this.createText('KILLS 0');
     this.levelText = this.createText('LV. 1');
@@ -43,25 +50,32 @@ export class BattleHud {
       ? Math.max(88, height - minimapSize - slotSize - 38)
       : height - minimapSize - 28;
 
-    this.graphics.clear();
-    this.drawTopBars(left, barWidth, healthRatio, experienceRatio, compact);
-    this.drawSkillSlots(skillLeft, bottom, slotSize, slotGap);
-    this.drawMiniMap(minimapX, minimapY, minimapSize);
+    const drawKey = `${width}:${height}:${healthRatio}:${experienceRatio}:${this.stats.pierceCount}:${this.stats.bladeCount}`;
+    if (drawKey !== this.drawKey) {
+      this.drawKey = drawKey;
+      this.graphics.clear();
+      this.drawTopBars(left, barWidth, healthRatio, experienceRatio, compact);
+      this.drawSkillSlots(skillLeft, bottom, slotSize, slotGap);
+    }
+    if (this.mapBounds.x !== minimapX || this.mapBounds.y !== minimapY || this.mapBounds.size !== minimapSize) {
+      this.mapBounds = { x: minimapX, y: minimapY, size: minimapSize };
+      this.nextMapAt = 0;
+    }
 
     if (compact) {
       this.timeText.setFontSize(15).setPosition(width - 100, 23).setText(formatTime(elapsedMs));
       this.killText.setFontSize(14).setPosition(width - 100, 48).setText(`KILLS ${kills}`);
-      this.levelText.setFontSize(14).setPosition(8, 73).setText(`LV. ${level}`);
+      this.levelText.setFontSize(14).setPosition(8, 73).setText(`LV. ${level}${this.maxed ? ' MAX' : ''}`);
     } else {
       this.timeText.setFontSize(24).setPosition(width / 2 - 42, 22).setText(formatTime(elapsedMs));
       this.killText.setFontSize(24).setPosition(width / 2 + 53, 25).setText(`KILLS ${kills}`);
-      this.levelText.setFontSize(24).setPosition(left - 48, 72).setText(`LV. ${level}`);
+      this.levelText.setFontSize(24).setPosition(left - 48, 72).setText(`LV. ${level}${this.maxed ? ' MAX' : ''}`);
     }
-    if (this.maxed) this.levelText.setText(`LV. ${level} MAX`);
   }
 
   public destroy(): void {
     this.graphics.destroy();
+    this.mapGraphics.destroy();
     this.timeText.destroy();
     this.killText.destroy();
     this.levelText.destroy();
@@ -124,21 +138,26 @@ export class BattleHud {
     }
   }
 
-  private drawMiniMap(x: number, y: number, size: number): void {
-    this.graphics.lineStyle(2, NEON_COLORS.hud, 0.9);
-    this.graphics.strokeRect(x, y, size, size);
-    this.graphics.lineStyle(1, NEON_COLORS.grid, 0.7);
+  public updateWorld(player: Vector2Like, enemies: readonly MinimapEnemy[], nowMs: number, force = false): void {
+    if (!force && nowMs < this.nextMapAt) return;
+    this.nextMapAt = nowMs + 100;
+    const { x, y, size } = this.mapBounds;
+    const graphics = this.mapGraphics;
+    graphics.clear();
+    graphics.fillStyle(NEON_COLORS.world, 0.88);
+    graphics.fillRect(x, y, size, size);
+    graphics.lineStyle(2, NEON_COLORS.hud, 0.9);
+    graphics.strokeRect(x, y, size, size);
+    graphics.lineStyle(1, NEON_COLORS.grid, 0.7);
     for (let step = 1; step < 4; step += 1) {
       const offset = (size / 4) * step;
-      this.graphics.lineBetween(x + offset, y, x + offset, y + size);
-      this.graphics.lineBetween(x, y + offset, x + size, y + offset);
+      graphics.lineBetween(x + offset, y, x + offset, y + size);
+      graphics.lineBetween(x, y + offset, x + size, y + offset);
     }
-    this.graphics.fillStyle(NEON_COLORS.player, 1);
-    this.graphics.fillCircle(x + size / 2, y + size / 2, 5);
-    this.graphics.fillStyle(NEON_COLORS.enemy, 0.85);
-    this.graphics.fillCircle(x + 20, y + 34, 3);
-    this.graphics.fillCircle(x + 96, y + 27, 3);
-    this.graphics.fillCircle(x + 78, y + 102, 3);
+    for (const marker of minimapMarkers(player, enemies, size)) {
+      graphics.fillStyle(marker.color, 1);
+      graphics.fillCircle(x + marker.x, y + marker.y, marker.radius);
+    }
   }
 
   private createText(value: string): Phaser.GameObjects.Text {
@@ -156,11 +175,4 @@ function formatTime(elapsedMs: number): string {
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
   const seconds = (totalSeconds % 60).toString().padStart(2, '0');
   return `${minutes}:${seconds}`;
-}
-
-export function worldToMiniMap(position: { x: number; y: number }, size: number): { x: number; y: number } {
-  return {
-    x: (position.x / WORLD_BOUNDS.width) * size,
-    y: (position.y / WORLD_BOUNDS.height) * size,
-  };
 }

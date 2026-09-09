@@ -129,29 +129,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.resolveContactDamage(this.elapsedMs);
-    this.primaryAttack.update(delta, this.enemies, (enemy, damage) => this.damageEnemy(enemy, damage));
-    this.skillSystem.update(delta, this.elapsedMs, this.enemies, (enemy, damage) => this.damageEnemy(enemy, damage));
     if (!this.player.isAlive()) {
-      this.hud.update(
-        this.player.healthRatio,
-        this.elapsedMs,
-        this.kills,
-        this.upgradeSystem.experienceRatio,
-        this.upgradeSystem.currentLevel,
-      );
+      this.removeInactiveEntities();
+      this.updateHud(true);
       this.enterGameOver();
       return;
     }
-
+    this.primaryAttack.update(delta, this.enemies, (enemy, damage) => this.damageEnemy(enemy, damage));
+    this.skillSystem.update(delta, this.elapsedMs, this.enemies, (enemy, damage) => this.damageEnemy(enemy, damage));
     this.collectExperience(delta);
     this.removeInactiveEntities();
-    this.hud.update(
-      this.player.healthRatio,
-      this.elapsedMs,
-      this.kills,
-      this.upgradeSystem.experienceRatio,
-      this.upgradeSystem.currentLevel,
-    );
+    this.updateHud();
 
     if (this.upgradeSystem.isChoosing) {
       this.enterUpgradeChoice();
@@ -193,7 +181,7 @@ export class GameScene extends Phaser.Scene {
 
     for (const enemy of this.enemies) {
       if (enemy.isAlive() && circlesOverlap(this.player, enemy)) {
-        this.player.receiveContactDamage(GAME_BALANCE.enemyContactDamage, time);
+        if (this.player.receiveContactDamage(GAME_BALANCE.enemyContactDamage, time)) break;
       }
     }
   }
@@ -237,6 +225,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private enterUpgradeChoice(): void {
+    this.clearActionPresses();
     this.state = 'choosing-upgrade';
     this.touchControls.setEnabled(false);
     this.overlay.showUpgrade(this.upgradeSystem.availableUpgrades, (id) => this.selectUpgrade(id));
@@ -244,7 +233,7 @@ export class GameScene extends Phaser.Scene {
 
   private selectUpgradeFromKeyboard(): void {
     const keys = [this.actionKeys.first, this.actionKeys.second, this.actionKeys.third];
-    const index = keys.findIndex((key) => Phaser.Input.Keyboard.JustDown(key));
+    const index = keys.map((key) => Phaser.Input.Keyboard.JustDown(key)).findIndex(Boolean);
     if (index < 0) {
       return;
     }
@@ -256,6 +245,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private selectUpgrade(id: UpgradeId): void {
+    if (this.state !== 'choosing-upgrade') return;
     const selected = this.upgradeSystem.selectUpgrade(id);
     if (selected === null) {
       return;
@@ -264,10 +254,9 @@ export class GameScene extends Phaser.Scene {
     this.player.applyStats(this.upgradeSystem.stats);
     this.skillSystem.setBladeCount(this.upgradeSystem.stats.bladeCount);
     this.hud.setBuild(this.upgradeSystem.stats, this.upgradeSystem.isMaxed);
-    this.hud.update(this.player.healthRatio, this.elapsedMs, this.kills,
-      this.upgradeSystem.experienceRatio, this.upgradeSystem.currentLevel);
+    this.updateHud(true);
     if (this.upgradeSystem.isChoosing) {
-      this.overlay.showUpgrade(this.upgradeSystem.availableUpgrades, (choiceId) => this.selectUpgrade(choiceId));
+      this.enterUpgradeChoice();
       return;
     }
 
@@ -277,6 +266,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private enterGameOver(): void {
+    this.clearActionPresses();
     this.state = 'game-over';
     this.touchControls.setEnabled(false);
     this.overlay.showGameOver(this.elapsedMs, this.kills, () => this.scene.restart());
@@ -288,13 +278,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.hud.setBuild(this.upgradeSystem.stats, this.upgradeSystem.isMaxed);
-    this.hud.update(
-      this.player.healthRatio,
-      this.elapsedMs,
-      this.kills,
-      this.upgradeSystem.experienceRatio,
-      this.upgradeSystem.currentLevel,
-    );
+    this.updateHud(true);
 
     if (this.state === 'choosing-upgrade') {
       this.overlay.showUpgrade(this.upgradeSystem.availableUpgrades, (id) => this.selectUpgrade(id));
@@ -305,6 +289,17 @@ export class GameScene extends Phaser.Scene {
     if (this.touchControls !== undefined) {
       this.touchControls.refresh();
     }
+  }
+
+  private clearActionPresses(): void {
+    // Consume queued edges without releasing physically held keys or enabling auto-repeat.
+    for (const key of Object.values(this.actionKeys)) Phaser.Input.Keyboard.JustDown(key);
+  }
+
+  private updateHud(forceMap = false): void {
+    this.hud.update(this.player.healthRatio, this.elapsedMs, this.kills,
+      this.upgradeSystem.experienceRatio, this.upgradeSystem.currentLevel);
+    this.hud.updateWorld(this.player, this.enemies, this.elapsedMs, forceMap);
   }
 
   private resetRun(): void {
