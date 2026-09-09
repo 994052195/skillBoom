@@ -21,6 +21,8 @@ export class TouchControls {
     scene.input.on('pointermove', this.onPointerMove, this);
     scene.input.on('pointerup', this.onPointerUp, this);
     scene.input.on('pointerupoutside', this.onPointerUp, this);
+    scene.game.events.on(Phaser.Core.Events.BLUR, this.releasePointer, this);
+    scene.game.events.on(Phaser.Core.Events.HIDDEN, this.releasePointer, this);
     this.refresh();
   }
 
@@ -52,6 +54,7 @@ export class TouchControls {
     this.baseX = nextBaseX;
     this.baseY = nextBaseY;
     this.visible = nextVisible;
+    if (this.activePointerId !== null) this.releasePointer();
     if (this.activePointerId === null) {
       this.knobX = this.baseX;
       this.knobY = this.baseY;
@@ -64,6 +67,8 @@ export class TouchControls {
     this.scene.input.off('pointermove', this.onPointerMove, this);
     this.scene.input.off('pointerup', this.onPointerUp, this);
     this.scene.input.off('pointerupoutside', this.onPointerUp, this);
+    this.scene.game.events.off(Phaser.Core.Events.BLUR, this.releasePointer, this);
+    this.scene.game.events.off(Phaser.Core.Events.HIDDEN, this.releasePointer, this);
     this.graphics.destroy();
   }
 
