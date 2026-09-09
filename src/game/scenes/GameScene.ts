@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
 import { circlesOverlap } from '../combat/collision';
+import type { AttackPattern } from '../combat/AttackPattern';
+import { ProjectileAttack } from '../combat/ProjectileAttack';
+import { findClosestTarget } from '../combat/targeting';
 import { GAME_BALANCE, NEON_COLORS, WORLD_BOUNDS } from '../config';
 import { Enemy } from '../entities/Enemy';
 import { ExperienceOrb } from '../entities/ExperienceOrb';
 import { Player } from '../entities/Player';
-import { Projectile } from '../entities/Projectile';
 import { EnemySpawner } from '../spawning/EnemySpawner';
 import { SkillSystem } from '../systems/SkillSystem';
 import { StatusSystem } from '../systems/StatusSystem';
@@ -25,8 +27,8 @@ export class GameScene extends Phaser.Scene {
   private overlay!: BattleOverlay;
   private touchControls!: TouchControls;
   private readonly enemies: Enemy[] = [];
-  private readonly projectiles: Projectile[] = [];
   private readonly experienceOrbs: ExperienceOrb[] = [];
+  private primaryAttack!: AttackPattern;
   private spawner = new EnemySpawner();
   private upgradeSystem = new UpgradeSystem();
   private skillSystem!: SkillSystem;
@@ -48,6 +50,7 @@ export class GameScene extends Phaser.Scene {
     this.createArena();
 
     this.player = new Player(this, WORLD_BOUNDS.width / 2, WORLD_BOUNDS.height / 2, WORLD_BOUNDS);
+    this.primaryAttack = new ProjectileAttack(this, this.player);
     this.skillSystem = new SkillSystem(this, this.player);
     this.cameras.main.startFollow(this.player, true, 0.09, 0.09);
     this.cameras.main.setRoundPixels(true);
@@ -81,6 +84,7 @@ export class GameScene extends Phaser.Scene {
       this.overlay.destroy();
       this.touchControls.destroy();
       this.skillSystem.destroy();
+      this.primaryAttack.destroy();
     });
   }
 
@@ -105,9 +109,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.player.isAlive()) {
-      const projectiles = this.player.update(delta, this.readInput(), this.enemies, this.elapsedMs);
-      if (projectiles.length > 0) {
-        this.projectiles.push(...projectiles);
+      this.player.update(delta, this.readInput(), this.elapsedMs);
+      if (this.player.canAttack(this.elapsedMs)) {
+        const target = findClosestTarget(this.player, this.enemies);
+        if (target !== null) {
+          this.player.markAttack(this.elapsedMs);
+          this.primaryAttack.attack(target, this.upgradeSystem.stats);
+        }
       }
 
       const spawn = this.spawner.update(this.elapsedMs, this.player, WORLD_BOUNDS, this.enemies.length);
@@ -120,12 +128,8 @@ export class GameScene extends Phaser.Scene {
       enemy.update(delta, this.player);
     }
 
-    for (const projectile of this.projectiles) {
-      projectile.update(delta);
-    }
-
     this.resolveContactDamage(this.elapsedMs);
-    this.resolveProjectileHits();
+    this.primaryAttack.update(delta, this.enemies, (enemy, damage) => this.damageEnemy(enemy, damage));
     this.skillSystem.update(delta, this.elapsedMs, this.enemies, (enemy, damage) => this.damageEnemy(enemy, damage));
     if (!this.player.isAlive()) {
       this.hud.update(
@@ -194,22 +198,6 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private resolveProjectileHits(): void {
-    for (const projectile of this.projectiles) {
-      if (!projectile.isAlive()) {
-        continue;
-      }
-
-      const contacts = this.enemies.map((enemy) => ({ enemy, time: projectile.hitTime(enemy) }))
-        .filter((contact): contact is { enemy: Enemy; time: number } => contact.time !== null)
-        .sort((a, b) => a.time - b.time);
-      for (const { enemy } of contacts) {
-        if (!projectile.isAlive()) break;
-        if (enemy.isAlive() && projectile.registerHit(enemy)) this.damageEnemy(enemy, projectile.damage);
-      }
-    }
-  }
-
   private damageEnemy(enemy: Enemy, damage: number): void {
     if (!enemy.isAlive() || !enemy.takeDamage(damage)) return;
     this.kills += 1;
@@ -221,13 +209,6 @@ export class GameScene extends Phaser.Scene {
       if (!this.enemies[index].isAlive()) {
         this.enemies[index].destroy();
         this.enemies.splice(index, 1);
-      }
-    }
-
-    for (let index = this.projectiles.length - 1; index >= 0; index -= 1) {
-      if (this.projectiles[index].isExpired(WORLD_BOUNDS)) {
-        this.projectiles[index].destroy();
-        this.projectiles.splice(index, 1);
       }
     }
 
@@ -328,7 +309,6 @@ export class GameScene extends Phaser.Scene {
 
   private resetRun(): void {
     this.enemies.length = 0;
-    this.projectiles.length = 0;
     this.experienceOrbs.length = 0;
     this.spawner = new EnemySpawner();
     this.upgradeSystem = new UpgradeSystem();

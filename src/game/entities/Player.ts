@@ -2,10 +2,8 @@ import Phaser from 'phaser';
 import { GAME_BALANCE, NEON_COLORS } from '../config';
 import { Health } from '../combat/health';
 import { clampPosition, getMovementVector } from '../combat/movement';
-import { findClosestTarget } from '../combat/targeting';
 import type { CombatStats, Damageable, PlayerInput, Targetable, WorldBounds } from '../types';
 import { statsFor } from '../systems/upgrades';
-import { Projectile } from './Projectile';
 
 export class Player extends Phaser.GameObjects.Graphics implements Damageable, Targetable {
   public readonly radius = GAME_BALANCE.playerRadius;
@@ -43,9 +41,9 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
     return this.healthState.isAlive();
   }
 
-  public update(deltaMs: number, input: PlayerInput, enemies: readonly Targetable[], nowMs: number): Projectile[] {
+  public update(deltaMs: number, input: PlayerInput, nowMs: number): void {
     if (!this.isAlive()) {
-      return [];
+      return;
     }
 
     const movement = getMovementVector(input, this.stats.moveSpeed);
@@ -57,18 +55,14 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
 
     this.setPosition(nextPosition.x, nextPosition.y);
     this.setAlpha(nowMs - this.lastDamageAt < 90 ? 0.45 : 1);
+  }
 
-    if (nowMs - this.lastAttackAt < this.stats.attackIntervalMs) {
-      return [];
-    }
+  public canAttack(nowMs: number): boolean {
+    return this.isAlive() && nowMs - this.lastAttackAt >= this.stats.attackIntervalMs;
+  }
 
-    const target = findClosestTarget(this, enemies);
-    if (target === null) {
-      return [];
-    }
-
+  public markAttack(nowMs: number): void {
     this.lastAttackAt = nowMs;
-    return this.fireAt(target);
   }
 
   public receiveContactDamage(amount: number, nowMs: number): boolean {
@@ -92,23 +86,6 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
     this.healthState.increaseMaximum(stats.maxHealth - this.stats.maxHealth);
     this.stats = stats;
     this.redraw();
-  }
-
-  private fireAt(target: Targetable): Projectile[] {
-    const spread = Phaser.Math.DegToRad(12);
-    const midpoint = (this.stats.projectileCount - 1) / 2;
-    const projectiles: Projectile[] = [];
-
-    for (let index = 0; index < this.stats.projectileCount; index += 1) {
-      projectiles.push(new Projectile(this.scene, this.x, this.y, target.x, target.y, {
-        damage: this.stats.projectileDamage,
-        speed: this.stats.projectileSpeed,
-        pierceCount: this.stats.pierceCount,
-        angleOffset: (index - midpoint) * spread,
-      }));
-    }
-
-    return projectiles;
   }
 
   private redraw(): void {
