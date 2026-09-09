@@ -36,7 +36,20 @@ export interface EnemySpawn {
   kind: EnemyKind;
 }
 
-export type UpgradeId = 'rapid-fire' | 'power-shot' | 'multishot' | 'swift-projectiles' | 'quickstep' | 'vital-core' | 'piercing-shot' | 'orbit-blades';
+export type UpgradeId =
+  | 'rapid-fire'
+  | 'power-shot'
+  | 'multishot'
+  | 'swift-projectiles'
+  | 'quickstep'
+  | 'vital-core'
+  | 'piercing-shot'
+  | 'orbit-blades'
+  | 'steel-tempest'
+  | 'tempest-range'
+  | 'tempest-force'
+  | 'tornado-pierce'
+  | 'gale-lift';
 
 export type PrimaryAttackId = 'projectile' | 'steel-tempest';
 
@@ -45,6 +58,7 @@ export interface UpgradeDefinition {
   name: string;
   description: string;
   maxRank: number;
+  requires?: UpgradeId;
 }
 
 export interface UpgradeChoice extends UpgradeDefinition {

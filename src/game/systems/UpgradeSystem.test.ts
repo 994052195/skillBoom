@@ -1,8 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { GAME_BALANCE } from '../config';
 import { UpgradeSystem } from './UpgradeSystem';
+import { UPGRADES, isEligibleUpgrade, previewUpgrade, statsFor } from './upgrades';
 
 describe('UpgradeSystem', () => {
+  it('keeps dedicated Steel Tempest upgrades locked until the skill is selected', () => {
+    const steelTempest = UPGRADES.find((entry) => entry.id === 'steel-tempest')!;
+    const tempestRange = UPGRADES.find((entry) => entry.id === 'tempest-range')!;
+
+    expect(isEligibleUpgrade(steelTempest, {})).toBe(true);
+    expect(isEligibleUpgrade(tempestRange, {})).toBe(false);
+    expect(isEligibleUpgrade(tempestRange, { 'steel-tempest': 1 })).toBe(true);
+    expect(statsFor({ 'steel-tempest': 1 }).primaryAttack).toBe('steel-tempest');
+  });
+
+  it('applies Steel Tempest stat upgrades and previews their real values', () => {
+    expect(statsFor({ 'steel-tempest': 1, 'tempest-range': 4 }).slashLength).toBe(560);
+    expect(statsFor({ 'steel-tempest': 1, 'tempest-force': 5 }).steelTempestBonusDamage).toBe(50);
+    expect(statsFor({ 'steel-tempest': 1, 'tornado-pierce': 3 }).tornadoPierceCount).toBe(6);
+    expect(statsFor({ 'steel-tempest': 1, 'gale-lift': 3 }).airborneDurationMs).toBe(1150);
+    expect(statsFor({ 'steel-tempest': 1, 'piercing-shot': 2 }).tornadoPierceCount).toBe(5);
+    expect(previewUpgrade('tempest-range', { 'steel-tempest': 1 })).toContain('320 → 380px');
+  });
+
   it('opens three distinct choices after reaching the experience threshold', () => {
     const upgrades = new UpgradeSystem(() => 0);
 
@@ -44,7 +64,8 @@ describe('UpgradeSystem', () => {
     const upgrades = new UpgradeSystem(() => 0);
     const counts = new Map<string, number>();
     let sawShortPool = false;
-    for (let step = 0; step < 40 && !upgrades.isMaxed; step += 1) {
+    const totalRanks = UPGRADES.reduce((sum, entry) => sum + entry.maxRank, 0);
+    for (let step = 0; step < totalRanks && !upgrades.isMaxed; step += 1) {
       upgrades.addExperience(upgrades.experienceToNextLevel);
       const choices = upgrades.availableUpgrades;
       expect(choices.length).toBeGreaterThan(0);
@@ -60,6 +81,8 @@ describe('UpgradeSystem', () => {
     expect(upgrades.stats.projectileCount).toBe(5);
     expect(upgrades.stats.pierceCount).toBe(3);
     expect(upgrades.stats.bladeCount).toBe(3);
+    expect(upgrades.stats.primaryAttack).toBe('steel-tempest');
+    expect(upgrades.stats.tornadoPierceCount).toBe(9);
     upgrades.addExperience(100000);
     expect(upgrades.isChoosing).toBe(false);
     expect(upgrades.availableUpgrades).toEqual([]);
@@ -81,12 +104,14 @@ describe('UpgradeSystem', () => {
   });
 
   it('chains excess experience choices with updated previews', () => {
-    const upgrades = new UpgradeSystem(() => 0.99999);
+    const upgrades = new UpgradeSystem(() => 0.83);
     upgrades.addExperience(30);
-    expect(upgrades.availableUpgrades[0].preview).toContain('0 → 1');
-    upgrades.selectUpgrade('orbit-blades');
+    const firstOrbit = upgrades.availableUpgrades.find((entry) => entry.id === 'orbit-blades')!;
+    expect(firstOrbit.preview).toContain('0 → 1');
+    upgrades.selectUpgrade(firstOrbit.id);
     expect(upgrades.isChoosing).toBe(true);
-    expect(upgrades.availableUpgrades[0].preview).toContain('1 → 2');
+    const secondOrbit = upgrades.availableUpgrades.find((entry) => entry.id === 'orbit-blades')!;
+    expect(secondOrbit.preview).toContain('1 → 2');
     upgrades.selectUpgrade('orbit-blades');
     upgrades.selectUpgrade('orbit-blades');
     expect(upgrades.stats.bladeCount).toBe(3);

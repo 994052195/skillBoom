@@ -1,7 +1,7 @@
 import { GAME_BALANCE } from '../config';
 import type { GameSystem } from './GameSystem';
 import type { CombatStats, UpgradeChoice, UpgradeId } from '../types';
-import { UPGRADES, statsFor, previewUpgrade, type UpgradeRanks } from './upgrades';
+import { UPGRADES, isEligibleUpgrade, statsFor, previewUpgrade, type UpgradeRanks } from './upgrades';
 
 type RandomSource = () => number;
 
@@ -17,7 +17,7 @@ export class UpgradeSystem implements GameSystem {
   public get stats(): CombatStats { return statsFor(this.ranks); }
 
   public get isMaxed(): boolean {
-    return UPGRADES.every((entry) => (this.ranks[entry.id] ?? 0) >= entry.maxRank);
+    return UPGRADES.every((entry) => !isEligibleUpgrade(entry, this.ranks) || (this.ranks[entry.id] ?? 0) >= entry.maxRank);
   }
 
   public get currentExperience(): number {
@@ -77,7 +77,7 @@ export class UpgradeSystem implements GameSystem {
       return false;
     }
 
-    const pool = UPGRADES.filter((entry) => (this.ranks[entry.id] ?? 0) < entry.maxRank);
+    const pool = UPGRADES.filter((entry) => isEligibleUpgrade(entry, this.ranks) && (this.ranks[entry.id] ?? 0) < entry.maxRank);
     if (pool.length === 0) return false;
     while (this.choices.length < 3 && pool.length > 0) {
       const index = Math.floor(this.random() * pool.length);

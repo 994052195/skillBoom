@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { circlesOverlap } from '../combat/collision';
 import type { AttackPattern } from '../combat/AttackPattern';
 import { ProjectileAttack } from '../combat/ProjectileAttack';
+import { SteelTempestAttack } from '../combat/SteelTempestAttack';
 import { findClosestTarget } from '../combat/targeting';
 import { GAME_BALANCE, NEON_COLORS, WORLD_BOUNDS } from '../config';
 import { Enemy } from '../entities/Enemy';
@@ -12,7 +13,7 @@ import { SkillSystem } from '../systems/SkillSystem';
 import { StatusSystem } from '../systems/StatusSystem';
 import type { GameSystem } from '../systems/GameSystem';
 import { UpgradeSystem } from '../systems/UpgradeSystem';
-import type { PlayerInput, UpgradeId } from '../types';
+import type { CombatStats, PlayerInput, UpgradeId } from '../types';
 import { BattleOverlay } from '../ui/BattleOverlay';
 import { BattleHud } from '../ui/BattleHud';
 import { TouchControls } from '../ui/TouchControls';
@@ -31,6 +32,7 @@ export class GameScene extends Phaser.Scene {
   private primaryAttack!: AttackPattern;
   private spawner = new EnemySpawner();
   private upgradeSystem = new UpgradeSystem();
+  private statusSystem!: StatusSystem;
   private skillSystem!: SkillSystem;
   private systems: GameSystem[] = [];
   private keys!: MovementKeys;
@@ -84,6 +86,7 @@ export class GameScene extends Phaser.Scene {
       this.overlay.destroy();
       this.touchControls.destroy();
       this.skillSystem.destroy();
+      this.statusSystem.clearAll();
       this.primaryAttack.destroy();
     });
   }
@@ -125,6 +128,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const enemy of this.enemies) {
+      if (this.statusSystem.isAirborne(enemy)) {
+        continue;
+      }
+
       enemy.update(delta, this.player);
     }
 
@@ -180,7 +187,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const enemy of this.enemies) {
-      if (enemy.isAlive() && circlesOverlap(this.player, enemy)) {
+      if (enemy.isAlive() && !this.statusSystem.isAirborne(enemy) && circlesOverlap(this.player, enemy)) {
         if (this.player.receiveContactDamage(GAME_BALANCE.enemyContactDamage, time)) break;
       }
     }
@@ -188,6 +195,7 @@ export class GameScene extends Phaser.Scene {
 
   private damageEnemy(enemy: Enemy, damage: number): void {
     if (!enemy.isAlive() || !enemy.takeDamage(damage)) return;
+    this.statusSystem.clear(enemy);
     this.kills += 1;
     this.experienceOrbs.push(new ExperienceOrb(this, enemy.x, enemy.y, enemy.experienceValue));
   }
@@ -195,7 +203,9 @@ export class GameScene extends Phaser.Scene {
   private removeInactiveEntities(): void {
     for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
       if (!this.enemies[index].isAlive()) {
-        this.enemies[index].destroy();
+        const enemy = this.enemies[index];
+        this.statusSystem.clear(enemy);
+        enemy.destroy();
         this.enemies.splice(index, 1);
       }
     }
@@ -252,6 +262,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.player.applyStats(this.upgradeSystem.stats);
+    this.setAttackPattern(this.upgradeSystem.stats);
     this.skillSystem.setBladeCount(this.upgradeSystem.stats.bladeCount);
     this.hud.setBuild(this.upgradeSystem.stats, this.upgradeSystem.isMaxed);
     this.updateHud(true);
@@ -269,7 +280,21 @@ export class GameScene extends Phaser.Scene {
     this.clearActionPresses();
     this.state = 'game-over';
     this.touchControls.setEnabled(false);
+    this.statusSystem.clearAll();
+    this.primaryAttack.destroy();
     this.overlay.showGameOver(this.elapsedMs, this.kills, () => this.scene.restart());
+  }
+
+  private setAttackPattern(stats: CombatStats): void {
+    if (this.primaryAttack.id === stats.primaryAttack) {
+      return;
+    }
+
+    this.statusSystem.clearAll();
+    this.primaryAttack.destroy();
+    this.primaryAttack = stats.primaryAttack === 'steel-tempest'
+      ? new SteelTempestAttack(this, this.player, this.statusSystem)
+      : new ProjectileAttack(this, this.player);
   }
 
   private refreshFixedUi(): void {
@@ -307,7 +332,8 @@ export class GameScene extends Phaser.Scene {
     this.experienceOrbs.length = 0;
     this.spawner = new EnemySpawner();
     this.upgradeSystem = new UpgradeSystem();
-    this.systems = [this.upgradeSystem, new StatusSystem()];
+    this.statusSystem = new StatusSystem();
+    this.systems = [this.upgradeSystem, this.statusSystem];
     this.kills = 0;
     this.elapsedMs = 0;
     this.state = 'playing';

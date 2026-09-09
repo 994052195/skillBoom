@@ -25,6 +25,10 @@ const phaser = vi.hoisted(() => {
     public setRotation(): this { return this; }
     public setDepth(): this { return this; }
     public clear(): this { return this; }
+    public save(): this { return this; }
+    public restore(): this { return this; }
+    public translateCanvas(): this { return this; }
+    public rotateCanvas(): this { return this; }
     public lineStyle(): this { return this; }
     public lineBetween(): this { return this; }
     public strokeCircle(): this { return this; }

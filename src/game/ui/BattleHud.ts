@@ -50,7 +50,7 @@ export class BattleHud {
       ? Math.max(88, height - minimapSize - slotSize - 38)
       : height - minimapSize - 28;
 
-    const drawKey = `${width}:${height}:${healthRatio}:${experienceRatio}:${this.stats.pierceCount}:${this.stats.bladeCount}`;
+    const drawKey = `${width}:${height}:${healthRatio}:${experienceRatio}:${this.stats.primaryAttack}:${this.stats.pierceCount}:${this.stats.bladeCount}`;
     if (drawKey !== this.drawKey) {
       this.drawKey = drawKey;
       this.graphics.clear();
@@ -108,9 +108,10 @@ export class BattleHud {
   }
 
   private drawSkillSlots(left: number, bottom: number, size: number, gap: number): void {
-    const colors = [NEON_COLORS.projectile, NEON_COLORS.player, 0x62ffce];
+    const primaryIsSteelTempest = this.stats.primaryAttack === 'steel-tempest';
+    const colors = [primaryIsSteelTempest ? NEON_COLORS.player : NEON_COLORS.projectile, NEON_COLORS.player, 0x62ffce];
     const enabled = [true, this.stats.pierceCount > 0, this.stats.bladeCount > 0];
-    const labels = ['普攻', `穿透 ${this.stats.pierceCount}/3`, `飞刃 ${this.stats.bladeCount}/3`];
+    const labels = [primaryIsSteelTempest ? '斩钢闪' : '普攻', `穿透 ${this.stats.pierceCount}/3`, `飞刃 ${this.stats.bladeCount}/3`];
     for (let index = 0; index < 3; index += 1) {
       const x = left + index * (size + gap);
       const y = bottom - size;
@@ -125,7 +126,15 @@ export class BattleHud {
       this.graphics.fillRoundedRect(x + inset, y + inset, size - inset * 2, size - inset * 2, 2);
       this.graphics.fillStyle(colors[index], 0.92 * alpha);
       if (index === 0) {
-        this.graphics.fillTriangle(x + size * 0.28, y + size * 0.72, x + size * 0.74, y + center, x + size * 0.28, y + size * 0.28);
+        if (primaryIsSteelTempest) {
+          this.graphics.lineStyle(4, colors[index], alpha);
+          this.graphics.lineBetween(x + size * 0.22, y + size * 0.68, x + size * 0.78, y + size * 0.32);
+          this.graphics.lineStyle(2, NEON_COLORS.projectile, 0.88 * alpha);
+          this.graphics.lineBetween(x + size * 0.28, y + size * 0.77, x + size * 0.84, y + size * 0.41);
+          this.graphics.fillCircle(x + size * 0.72, y + size * 0.36, size * 0.08);
+        } else {
+          this.graphics.fillTriangle(x + size * 0.28, y + size * 0.72, x + size * 0.74, y + center, x + size * 0.28, y + size * 0.28);
+        }
       } else if (index === 1) {
         this.graphics.fillTriangle(x + size * 0.3, y + size * 0.3, x + size * 0.75, y + center, x + size * 0.3, y + size * 0.7);
         this.graphics.lineStyle(2, colors[index], alpha);

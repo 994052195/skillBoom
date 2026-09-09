@@ -68,24 +68,35 @@ export class Enemy extends Phaser.GameObjects.Graphics implements Damageable, Ta
   }
 
   public setAirborneVisual(active: boolean, remainingRatio: number): void {
+    if (this.scene === undefined) {
+      return;
+    }
+
     const ratio = active ? Phaser.Math.Clamp(remainingRatio, 0, 1) : 0;
     this.airborneVisualRatio = ratio;
-    this.displayOriginX = 0;
-    this.displayOriginY = active ? -Math.round(16 * ratio) : 0;
-    this.setRotation(active ? (1 - ratio) * 0.18 - 0.09 : 0);
     this.setAlpha(active ? 0.72 + ratio * 0.28 : 1);
     this.redraw();
   }
 
   private redraw(): void {
     this.clear();
+    const lift = Math.round(22 * Math.sin(this.airborneVisualRatio * Math.PI));
+    const tilt = this.airborneVisualRatio > 0 ? (1 - this.airborneVisualRatio) * 0.18 - 0.09 : 0;
+
+    this.save();
+    if (lift > 0 || tilt !== 0) {
+      this.translateCanvas(0, -lift);
+      this.rotateCanvas(tilt);
+    }
 
     if (this.kind === 'ember-buff' || this.kind === 'crystal-buff') {
       this.drawBuffMonster();
+      this.restore();
       return;
     }
 
     this.drawMinion();
+    this.restore();
   }
 
   private drawMinion(): void {
