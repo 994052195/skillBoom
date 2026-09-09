@@ -36,10 +36,27 @@ export interface EnemySpawn {
   kind: EnemyKind;
 }
 
-export type UpgradeId = 'rapid-fire' | 'power-shot' | 'multishot' | 'swift-projectiles' | 'quickstep' | 'vital-core';
+export type UpgradeId = 'rapid-fire' | 'power-shot' | 'multishot' | 'swift-projectiles' | 'quickstep' | 'vital-core' | 'piercing-shot' | 'orbit-blades';
 
 export interface UpgradeDefinition {
   id: UpgradeId;
   name: string;
   description: string;
+  maxRank: number;
+}
+
+export interface UpgradeChoice extends UpgradeDefinition {
+  currentRank: number;
+  preview: string;
+}
+
+export interface CombatStats {
+  moveSpeed: number;
+  attackIntervalMs: number;
+  projectileDamage: number;
+  projectileSpeed: number;
+  projectileCount: number;
+  maxHealth: number;
+  pierceCount: number;
+  bladeCount: number;
 }

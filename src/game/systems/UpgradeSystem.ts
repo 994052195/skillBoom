@@ -1,25 +1,24 @@
 import { GAME_BALANCE } from '../config';
 import type { GameSystem } from './GameSystem';
-import type { UpgradeDefinition, UpgradeId } from '../types';
+import type { CombatStats, UpgradeChoice, UpgradeId } from '../types';
+import { UPGRADES, statsFor, previewUpgrade, type UpgradeRanks } from './upgrades';
 
 type RandomSource = () => number;
-
-const UPGRADES: readonly UpgradeDefinition[] = [
-  { id: 'rapid-fire', name: '连发核心', description: '攻击间隔缩短 12%' },
-  { id: 'power-shot', name: '强击棱镜', description: '投射物伤害 +10' },
-  { id: 'multishot', name: '分裂回路', description: '每次攻击额外发射 1 枚投射物' },
-  { id: 'swift-projectiles', name: '超导弹道', description: '投射物速度 +16%' },
-  { id: 'quickstep', name: '相位步伐', description: '移动速度 +12%' },
-  { id: 'vital-core', name: '生命核心', description: '最大生命 +25，并恢复 25 生命' },
-];
 
 export class UpgradeSystem implements GameSystem {
   private experience = 0;
   private level = 1;
   private requiredExperience: number = GAME_BALANCE.firstLevelExperience;
-  private choices: UpgradeDefinition[] = [];
+  private choices: UpgradeChoice[] = [];
+  private readonly ranks: UpgradeRanks = {};
 
   public constructor(private readonly random: RandomSource = Math.random) {}
+
+  public get stats(): CombatStats { return statsFor(this.ranks); }
+
+  public get isMaxed(): boolean {
+    return UPGRADES.every((entry) => (this.ranks[entry.id] ?? 0) >= entry.maxRank);
+  }
 
   public get currentExperience(): number {
     return this.experience;
@@ -34,19 +33,19 @@ export class UpgradeSystem implements GameSystem {
   }
 
   public get experienceRatio(): number {
-    return Math.min(1, this.experience / this.requiredExperience);
+    return this.isMaxed ? 1 : Math.min(1, this.experience / this.requiredExperience);
   }
 
   public get isChoosing(): boolean {
     return this.choices.length > 0;
   }
 
-  public get availableUpgrades(): readonly UpgradeDefinition[] {
+  public get availableUpgrades(): readonly UpgradeChoice[] {
     return this.choices;
   }
 
   public addExperience(amount: number): boolean {
-    if (amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0 || this.isMaxed) {
       return false;
     }
 
@@ -54,13 +53,14 @@ export class UpgradeSystem implements GameSystem {
     return this.openChoiceIfReady();
   }
 
-  public selectUpgrade(id: UpgradeId): UpgradeDefinition | null {
+  public selectUpgrade(id: UpgradeId): UpgradeChoice | null {
     const selected = this.choices.find((choice) => choice.id === id) ?? null;
     if (selected === null) {
       return null;
     }
 
     this.experience -= this.requiredExperience;
+    this.ranks[id] = (this.ranks[id] ?? 0) + 1;
     this.level += 1;
     this.requiredExperience = Math.ceil(
       GAME_BALANCE.firstLevelExperience * GAME_BALANCE.experienceLevelGrowth ** (this.level - 1),
@@ -77,10 +77,13 @@ export class UpgradeSystem implements GameSystem {
       return false;
     }
 
-    const pool = [...UPGRADES];
+    const pool = UPGRADES.filter((entry) => (this.ranks[entry.id] ?? 0) < entry.maxRank);
+    if (pool.length === 0) return false;
     while (this.choices.length < 3 && pool.length > 0) {
       const index = Math.floor(this.random() * pool.length);
-      this.choices.push(pool.splice(index, 1)[0]);
+      const definition = pool.splice(index, 1)[0];
+      this.choices.push({ ...definition, currentRank: this.ranks[definition.id] ?? 0,
+        preview: previewUpgrade(definition.id, this.ranks) });
     }
     return true;
   }

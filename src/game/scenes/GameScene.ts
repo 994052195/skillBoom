@@ -29,6 +29,7 @@ export class GameScene extends Phaser.Scene {
   private readonly experienceOrbs: ExperienceOrb[] = [];
   private spawner = new EnemySpawner();
   private upgradeSystem = new UpgradeSystem();
+  private skillSystem!: SkillSystem;
   private systems: GameSystem[] = [];
   private keys!: MovementKeys;
   private actionKeys!: ActionKeys;
@@ -47,6 +48,7 @@ export class GameScene extends Phaser.Scene {
     this.createArena();
 
     this.player = new Player(this, WORLD_BOUNDS.width / 2, WORLD_BOUNDS.height / 2, WORLD_BOUNDS);
+    this.skillSystem = new SkillSystem(this, this.player);
     this.cameras.main.startFollow(this.player, true, 0.09, 0.09);
     this.cameras.main.setRoundPixels(true);
 
@@ -78,10 +80,12 @@ export class GameScene extends Phaser.Scene {
       this.hud.destroy();
       this.overlay.destroy();
       this.touchControls.destroy();
+      this.skillSystem.destroy();
     });
   }
 
   public update(_time: number, delta: number): void {
+    delta = Math.min(delta, 50);
     this.touchControls.refresh();
     if (this.state === 'game-over') {
       if (Phaser.Input.Keyboard.JustDown(this.actionKeys.restart)) {
@@ -122,6 +126,7 @@ export class GameScene extends Phaser.Scene {
 
     this.resolveContactDamage(this.elapsedMs);
     this.resolveProjectileHits();
+    this.skillSystem.update(delta, this.elapsedMs, this.enemies, (enemy, damage) => this.damageEnemy(enemy, damage));
     if (!this.player.isAlive()) {
       this.hud.update(
         this.player.healthRatio,
@@ -195,20 +200,20 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
-      for (const enemy of this.enemies) {
-        if (!projectile.collidesWith(enemy)) {
-          continue;
-        }
-
-        const killed = enemy.takeDamage(projectile.damage);
-        projectile.consume();
-        if (killed) {
-          this.kills += 1;
-          this.experienceOrbs.push(new ExperienceOrb(this, enemy.x, enemy.y, enemy.experienceValue));
-        }
-        break;
+      const contacts = this.enemies.map((enemy) => ({ enemy, time: projectile.hitTime(enemy) }))
+        .filter((contact): contact is { enemy: Enemy; time: number } => contact.time !== null)
+        .sort((a, b) => a.time - b.time);
+      for (const { enemy } of contacts) {
+        if (!projectile.isAlive()) break;
+        if (enemy.isAlive() && projectile.registerHit(enemy)) this.damageEnemy(enemy, projectile.damage);
       }
     }
+  }
+
+  private damageEnemy(enemy: Enemy, damage: number): void {
+    if (!enemy.isAlive() || !enemy.takeDamage(damage)) return;
+    this.kills += 1;
+    this.experienceOrbs.push(new ExperienceOrb(this, enemy.x, enemy.y, enemy.experienceValue));
   }
 
   private removeInactiveEntities(): void {
@@ -275,7 +280,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.player.applyUpgrade(selected.id);
+    this.player.applyStats(this.upgradeSystem.stats);
+    this.skillSystem.setBladeCount(this.upgradeSystem.stats.bladeCount);
+    this.hud.setBuild(this.upgradeSystem.stats, this.upgradeSystem.isMaxed);
+    this.hud.update(this.player.healthRatio, this.elapsedMs, this.kills,
+      this.upgradeSystem.experienceRatio, this.upgradeSystem.currentLevel);
     if (this.upgradeSystem.isChoosing) {
       this.overlay.showUpgrade(this.upgradeSystem.availableUpgrades, (choiceId) => this.selectUpgrade(choiceId));
       return;
@@ -297,6 +306,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.hud.setBuild(this.upgradeSystem.stats, this.upgradeSystem.isMaxed);
     this.hud.update(
       this.player.healthRatio,
       this.elapsedMs,
@@ -322,7 +332,7 @@ export class GameScene extends Phaser.Scene {
     this.experienceOrbs.length = 0;
     this.spawner = new EnemySpawner();
     this.upgradeSystem = new UpgradeSystem();
-    this.systems = [new SkillSystem(), this.upgradeSystem, new StatusSystem()];
+    this.systems = [this.upgradeSystem, new StatusSystem()];
     this.kills = 0;
     this.elapsedMs = 0;
     this.state = 'playing';

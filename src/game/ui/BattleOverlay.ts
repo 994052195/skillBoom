@@ -1,19 +1,20 @@
 import Phaser from 'phaser';
 import { NEON_COLORS } from '../config';
-import type { UpgradeDefinition, UpgradeId } from '../types';
+import type { UpgradeChoice, UpgradeId } from '../types';
 
 export class BattleOverlay {
   private readonly objects: Phaser.GameObjects.GameObject[] = [];
 
   public constructor(private readonly scene: Phaser.Scene) {}
 
-  public showUpgrade(choices: readonly UpgradeDefinition[], onSelect: (id: UpgradeId) => void): void {
+  public showUpgrade(choices: readonly UpgradeChoice[], onSelect: (id: UpgradeId) => void): void {
     this.clear();
     const { width, height } = this.scene.cameras.main;
-    const stacked = width < 480 || height > width;
+    if (choices.length === 0) return;
+    const stacked = width < 560 && height > width;
     const compact = height < 620 || stacked;
-    const titleY = compact ? 42 : 118;
-    const subtitleY = compact ? 76 : 164;
+    const titleY = compact ? 30 : 100;
+    const subtitleY = compact ? 62 : 144;
     this.addScrim(width, height);
     this.addText(width / 2, titleY, '等级提升', compact ? 28 : 38, NEON_COLORS.experience);
     this.addText(width / 2, subtitleY, '选择一项强化', compact ? 16 : 18, 0xd9faff);
@@ -21,10 +22,10 @@ export class BattleOverlay {
     const gap = stacked ? 10 : 20;
     const cardWidth = stacked
       ? Math.min(420, width - 32)
-      : Math.min(280, (width - 96) / choices.length);
+      : Math.min(300, (width - 48 - gap * (choices.length - 1)) / choices.length);
     const cardHeight = stacked
-      ? Math.max(98, Math.min(132, Math.floor((height - subtitleY - 32 - gap * (choices.length - 1)) / choices.length)))
-      : Math.min(236, Math.max(158, height - 232));
+      ? Math.min(158, Math.floor((height - subtitleY - 44 - gap * (choices.length - 1)) / choices.length))
+      : Math.min(272, height - subtitleY - 52);
     const totalHeight = cardHeight * choices.length + gap * (choices.length - 1);
     const startX = stacked
       ? width / 2 - cardWidth / 2
@@ -48,20 +49,30 @@ export class BattleOverlay {
       key.setOrigin(0, 0.5);
       const name = this.addText(
         stacked ? x + 52 : x + cardWidth / 2,
-        stacked ? y + 24 : y + cardHeight * 0.37,
+        stacked ? y + 24 : y + 46,
         choice.name,
-        compact ? 20 : 25,
+        compact ? 19 : 25,
         NEON_COLORS.hud,
         stacked ? 0 : 0.5,
       );
-      const description = this.scene.add.text(stacked ? x + 22 : x + cardWidth / 2, stacked ? y + 52 : y + cardHeight * 0.57, choice.description, {
-        align: 'center',
+      const nextRank = choice.currentRank + 1;
+      this.addText(stacked ? x + 22 : x + cardWidth / 2, y + (stacked ? 49 : 80),
+        `Lv.${choice.currentRank} → ${nextRank} / ${choice.maxRank}${nextRank === choice.maxRank ? '  满级' : ''}`,
+        14, 0xffe54c, stacked ? 0 : 0.5);
+      const preview = this.scene.add.text(stacked ? x + 22 : x + cardWidth / 2, y + (stacked ? 66 : 106), choice.preview, {
+        fontFamily: 'Segoe UI, sans-serif', fontSize: compact ? '16px' : '19px', color: '#62ffce',
+        align: stacked ? 'left' : 'center', wordWrap: { width: cardWidth - 32, useAdvancedWrap: true },
+      }).setOrigin(stacked ? 0 : 0.5, 0).setScrollFactor(0).setDepth(2001);
+      this.objects.push(preview);
+      const description = this.scene.add.text(stacked ? x + 22 : x + cardWidth / 2, preview.y + preview.height + 10, choice.description, {
+        align: stacked ? 'left' : 'center',
         color: '#d9faff',
         fontFamily: 'Segoe UI, sans-serif',
-        fontSize: compact ? '16px' : '18px',
-        wordWrap: { width: cardWidth - (stacked ? 44 : 60) },
+        fontSize: compact ? '13px' : '15px',
+        wordWrap: { width: cardWidth - 44, useAdvancedWrap: true },
       }).setOrigin(stacked ? 0 : 0.5, 0).setScrollFactor(0).setDepth(2001);
-      this.objects.push(name, description);
+      name.setWordWrapWidth(cardWidth - 52, true);
+      this.objects.push(description);
 
       card.on('pointerover', () => card.setFillStyle(0x123c56, 1));
       card.on('pointerout', () => card.setFillStyle(0x0b1d31, 0.98));

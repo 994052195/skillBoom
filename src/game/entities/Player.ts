@@ -3,7 +3,8 @@ import { GAME_BALANCE, NEON_COLORS } from '../config';
 import { Health } from '../combat/health';
 import { clampPosition, getMovementVector } from '../combat/movement';
 import { findClosestTarget } from '../combat/targeting';
-import type { Damageable, PlayerInput, Targetable, UpgradeId, WorldBounds } from '../types';
+import type { CombatStats, Damageable, PlayerInput, Targetable, WorldBounds } from '../types';
+import { statsFor } from '../systems/upgrades';
 import { Projectile } from './Projectile';
 
 export class Player extends Phaser.GameObjects.Graphics implements Damageable, Targetable {
@@ -11,11 +12,7 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
   private readonly healthState = new Health(GAME_BALANCE.playerHealth);
   private lastAttackAt = Number.NEGATIVE_INFINITY;
   private lastDamageAt = Number.NEGATIVE_INFINITY;
-  private moveSpeed: number = GAME_BALANCE.playerSpeed;
-  private attackIntervalMs: number = GAME_BALANCE.playerAttackIntervalMs;
-  private projectileDamage: number = GAME_BALANCE.projectileDamage;
-  private projectileSpeed: number = GAME_BALANCE.projectileSpeed;
-  private projectileCount: number = 1;
+  private stats = statsFor({});
 
   public constructor(
     scene: Phaser.Scene,
@@ -51,7 +48,7 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
       return [];
     }
 
-    const movement = getMovementVector(input, this.moveSpeed);
+    const movement = getMovementVector(input, this.stats.moveSpeed);
     const nextPosition = clampPosition(
       { x: this.x + movement.x * (deltaMs / 1000), y: this.y + movement.y * (deltaMs / 1000) },
       this.bounds,
@@ -61,7 +58,7 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
     this.setPosition(nextPosition.x, nextPosition.y);
     this.setAlpha(nowMs - this.lastDamageAt < 90 ? 0.45 : 1);
 
-    if (nowMs - this.lastAttackAt < this.attackIntervalMs) {
+    if (nowMs - this.lastAttackAt < this.stats.attackIntervalMs) {
       return [];
     }
 
@@ -91,39 +88,22 @@ export class Player extends Phaser.GameObjects.Graphics implements Damageable, T
     return died;
   }
 
-  public applyUpgrade(upgrade: UpgradeId): void {
-    switch (upgrade) {
-      case 'rapid-fire':
-        this.attackIntervalMs = Math.max(120, Math.round(this.attackIntervalMs * 0.88));
-        break;
-      case 'power-shot':
-        this.projectileDamage += 10;
-        break;
-      case 'multishot':
-        this.projectileCount += 1;
-        break;
-      case 'swift-projectiles':
-        this.projectileSpeed = Math.round(this.projectileSpeed * 1.16);
-        break;
-      case 'quickstep':
-        this.moveSpeed = Math.round(this.moveSpeed * 1.12);
-        break;
-      case 'vital-core':
-        this.healthState.increaseMaximum(25);
-        this.redraw();
-        break;
-    }
+  public applyStats(stats: CombatStats): void {
+    this.healthState.increaseMaximum(stats.maxHealth - this.stats.maxHealth);
+    this.stats = stats;
+    this.redraw();
   }
 
   private fireAt(target: Targetable): Projectile[] {
     const spread = Phaser.Math.DegToRad(12);
-    const midpoint = (this.projectileCount - 1) / 2;
+    const midpoint = (this.stats.projectileCount - 1) / 2;
     const projectiles: Projectile[] = [];
 
-    for (let index = 0; index < this.projectileCount; index += 1) {
+    for (let index = 0; index < this.stats.projectileCount; index += 1) {
       projectiles.push(new Projectile(this.scene, this.x, this.y, target.x, target.y, {
-        damage: this.projectileDamage,
-        speed: this.projectileSpeed,
+        damage: this.stats.projectileDamage,
+        speed: this.stats.projectileSpeed,
+        pierceCount: this.stats.pierceCount,
         angleOffset: (index - midpoint) * spread,
       }));
     }

@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { GAME_BALANCE, NEON_COLORS } from '../config';
-import { circlesOverlap } from '../combat/collision';
+import { ProjectileHits, segmentCircleTime } from '../combat/skills';
 import type { Targetable, WorldBounds } from '../types';
 
 interface ProjectileOptions {
   damage?: number;
   speed?: number;
   angleOffset?: number;
+  pierceCount?: number;
 }
 
 export class Projectile extends Phaser.GameObjects.Graphics implements Targetable {
@@ -15,6 +16,8 @@ export class Projectile extends Phaser.GameObjects.Graphics implements Targetabl
   private readonly velocityX: number;
   private readonly velocityY: number;
   private activeProjectile = true;
+  private previous: { x: number; y: number };
+  private readonly hits: ProjectileHits;
 
   public constructor(
     scene: Phaser.Scene,
@@ -22,9 +25,11 @@ export class Projectile extends Phaser.GameObjects.Graphics implements Targetabl
     y: number,
     targetX: number,
     targetY: number,
-    { damage = GAME_BALANCE.projectileDamage, speed = GAME_BALANCE.projectileSpeed, angleOffset = 0 }: ProjectileOptions = {},
+    { damage = GAME_BALANCE.projectileDamage, speed = GAME_BALANCE.projectileSpeed, angleOffset = 0, pierceCount = 0 }: ProjectileOptions = {},
   ) {
     super(scene);
+    this.previous = { x, y };
+    this.hits = new ProjectileHits(pierceCount);
     const distanceX = targetX - x;
     const distanceY = targetY - y;
     const angle = Math.atan2(distanceY, distanceX) + angleOffset;
@@ -32,9 +37,14 @@ export class Projectile extends Phaser.GameObjects.Graphics implements Targetabl
     this.velocityX = Math.cos(angle) * speed;
     this.velocityY = Math.sin(angle) * speed;
     this.setPosition(x, y);
+    this.setRotation(angle);
     this.setDepth(15);
     scene.add.existing(this);
     this.redraw();
+    if (pierceCount > 0) {
+      this.lineStyle(2, NEON_COLORS.player, 0.95);
+      this.strokeCircle(0, 0, this.radius + 2);
+    }
   }
 
   public isAlive(): boolean {
@@ -46,12 +56,20 @@ export class Projectile extends Phaser.GameObjects.Graphics implements Targetabl
       return;
     }
 
+    this.previous = { x: this.x, y: this.y };
     this.x += this.velocityX * (deltaMs / 1000);
     this.y += this.velocityY * (deltaMs / 1000);
   }
 
-  public collidesWith(target: Targetable): boolean {
-    return this.activeProjectile && target.isAlive() && circlesOverlap(this, target);
+  public hitTime(target: Targetable): number | null {
+    if (!this.activeProjectile || !target.isAlive() || this.hits.has(target)) return null;
+    return segmentCircleTime(this.previous, this, target, this.radius + target.radius);
+  }
+
+  public registerHit(target: Targetable): boolean {
+    if (!this.activeProjectile || !this.hits.hit(target)) return false;
+    if (this.hits.exhausted) this.consume();
+    return true;
   }
 
   public consume(): void {
