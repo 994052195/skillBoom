@@ -305,6 +305,16 @@ git commit -m "feat: integrate steel tempest reward loop"
 
 ## Plan Self-Review
 
+## Delivery Status (2026-09-09)
+
+- [x] Task 1: combat data and airborne state implemented and reviewed.
+- [x] Task 2: projectile attack extraction implemented and reviewed; actual hit-order, pierce and cleanup tests added.
+- [x] Task 3: slash volleys and third-cast tornado implemented and reviewed.
+- [x] Task 4: rewards, capped upgrades, HUD, scene lifecycle and airborne integration implemented and reviewed.
+- [x] Verification: 40 unit tests, 10 real Phaser browser checks, production build and final code review passed.
+
+Final tuning: range +60px (4 ranks), skill bonus damage +10 (5 ranks), tornado targets +1 (3 ranks), airborne +150ms (3 ranks). Existing piercing ranks also add tornado targets. The original step snippets above record the plan; delivery status is authoritative.
+
 - Spec coverage: Tasks 1 and 3 cover cast counting, slash collision, multishot de-duplication, tornado pierce, and airborne. Task 4 covers random reward gating, upgrades, UI, lifecycle cleanup, and browser verification.
 - Placeholder scan: every task includes exact files, concrete interfaces, a failing test, commands, expected output, implementation details, and commit scope.
 - Type consistency: `PrimaryAttackId`, `CombatStats.primaryAttack`, `AttackPattern`, `StatusSystem.applyAirborne`, `SlashWave`, and `Tornado` use the same names throughout.

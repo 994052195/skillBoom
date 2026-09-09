@@ -3,9 +3,11 @@ import { GameScene } from '../../src/game/scenes/GameScene.ts';
 import { Enemy } from '../../src/game/entities/Enemy.ts';
 import { Projectile } from '../../src/game/entities/Projectile.ts';
 import { UpgradeSystem } from '../../src/game/systems/UpgradeSystem.ts';
+import { statsFor } from '../../src/game/systems/upgrades.ts';
 
 const scene = new GameScene();
-const game = new Phaser.Game({type:Phaser.CANVAS,parent:'app',width:667,height:375,scene:[scene],audio:{noAudio:true}});
+const params = new URLSearchParams(location.search);
+const game = new Phaser.Game({type:Phaser.CANVAS,parent:'app',width:Number(params.get('w'))||667,height:Number(params.get('h'))||375,scene:[scene],audio:{noAudio:true}});
 const report = document.querySelector('#report');
 const results = [];
 function test(name, run) {
@@ -13,10 +15,37 @@ function test(name, run) {
   catch (error) { results.push('FAIL '+name+': '+error.message); }
   report.textContent = results.join('\n');
 }
-const ready = setInterval(() => {
+async function restartFixture() {
+  const previous = scene.player;
+  scene.scene.restart();
+  for (let i = 0; i < 100 && scene.player === previous; i++) await new Promise((resolve) => setTimeout(resolve, 20));
+  if (scene.player === previous) throw Error('Scene restart timed out');
+  scene.scene.pause();
+  scene.spawner.lastSpawnAt = 1e9;
+  scene.player.lastAttackAt = 1e9;
+}
+function showPreview() {
+    const p=scene.player, stats=statsFor({'steel-tempest':1,multishot:2});
+    scene.cameras.main.stopFollow();scene.cameras.main.centerOn(p.x,p.y);
+    scene.setAttackPattern(stats);
+    for(const [dx,dy,kind] of [[140,0,'ember-buff'],[260,-55,'caster-minion'],[295,65,'melee-minion'],[-120,60,'crystal-buff']]) {
+      scene.enemies.push(new Enemy(scene,p.x+dx,p.y+dy,kind));
+    }
+    const target={x:p.x+500,y:p.y,radius:16,isAlive:()=>true};
+    for(let i=0;i<3;i++)scene.primaryAttack.attack(target,stats);
+    scene.primaryAttack.update(40,scene.enemies,(e,d)=>scene.damageEnemy(e,d));
+    const wind=scene.primaryAttack.tornadoes[0];
+    wind.update(140);wind.resolveHits(scene.enemies,(e,d)=>scene.damageEnemy(e,d),scene.statusSystem);
+    scene.statusSystem.update(300);
+    scene.hud.setBuild(stats,false);scene.hud.update(1,45000,38,0.5,8);
+    scene.hud.updateWorld(p,scene.enemies,45000,true);
+    report.hidden=true;
+}
+const ready = setInterval(async () => {
   if (!scene.touchControls) return;
   clearInterval(ready);
   scene.scene.pause();
+  if (params.has('preview')) { showPreview(); return; }
   test('prepressed key does not auto-select upgrade', () => {
     scene.upgradeSystem = new UpgradeSystem(() => 0);
     scene.actionKeys.first._justDown = true;
@@ -89,10 +118,57 @@ const ready = setInterval(() => {
     const target=new Enemy(scene,p.x+120,p.y,'melee-minion'); target.takeDamage(20);
     const dead=new Enemy(scene,p.x-100,p.y,'melee-minion'); dead.takeDamage(40);
     scene.enemies.push(contact,target,dead);
-    scene.projectiles.push(new Projectile(scene,p.x+120,p.y,p.x+130,p.y));
+    scene.primaryAttack.projectiles.push(new Projectile(scene,p.x+120,p.y,p.x+130,p.y));
     const initialKills=scene.kills;
     scene.update(0,16);
     return scene.state==='game-over' && target.isAlive() && scene.kills===initialKills && !dead.scene;
+  });
+  await restartFixture();
+  test('steel tempest unlock switches primary attack and preserves stacks on stat upgrade', () => {
+    const previous=scene.primaryAttack;
+    scene.upgradeSystem = new UpgradeSystem(() => 0.99999);
+    scene.upgradeSystem.addExperience(6);
+    scene.enterUpgradeChoice();
+    scene.selectUpgrade('steel-tempest');
+    const switched=scene.primaryAttack.id==='steel-tempest' && previous!==scene.primaryAttack;
+    const attack=scene.primaryAttack;
+    const p=scene.player;
+    const target={x:p.x+200,y:p.y,radius:16,isAlive:()=>true};
+    attack.attack(target, statsFor({'steel-tempest':1}));
+    attack.attack(target, statsFor({'steel-tempest':1}));
+    scene.setAttackPattern(statsFor({'steel-tempest':1,'tempest-force':1}));
+    return switched && scene.primaryAttack===attack && scene.primaryAttack.windStacks===2;
+  });
+  await restartFixture();
+  test('steel tempest third cast creates tornado and airborne suppresses contact until recovery', () => {
+    scene.setAttackPattern(statsFor({'steel-tempest':1}));
+    const p=scene.player;
+    const enemy=new Enemy(scene,p.x+120,p.y,'ember-buff');
+    scene.enemies.push(enemy);
+    const stats=statsFor({'steel-tempest':1});
+    scene.primaryAttack.attack(enemy, stats);
+    scene.primaryAttack.attack(enemy, stats);
+    const before=scene.primaryAttack.activeTornadoCount;
+    scene.primaryAttack.attack(enemy, stats);
+    for(let i=0;i<4;i++)scene.primaryAttack.update(50, scene.enemies, (target, damage)=>scene.damageEnemy(target, damage));
+    const lifted=scene.statusSystem.isAirborne(enemy);
+    enemy.setPosition(p.x, p.y);
+    const health=p.health;
+    scene.update(0,16);
+    const stationary=enemy.x===p.x && enemy.y===p.y;
+    scene.resolveContactDamage(1000);
+    const suppressed=p.health===health;
+    scene.statusSystem.update(stats.airborneDurationMs);
+    const recovered=!scene.statusSystem.isAirborne(enemy);
+    scene.resolveContactDamage(1500);
+    return before===0 && lifted && stationary && suppressed && recovered && p.health<health;
+  });
+  const oldEnemy=scene.enemies[0];
+  scene.statusSystem.applyAirborne(oldEnemy,700);
+  await restartFixture();
+  test('steel tempest cleanup clears active airborne before shutdown restart', () => {
+    return scene.state==='playing' && scene.primaryAttack.id==='projectile'
+      && !scene.statusSystem.isAirborne(oldEnemy) && !oldEnemy.scene;
   });
   report.textContent = (results.every(line=>line.startsWith('PASS')) ? 'ALL LOGIC CHECKS PASS\n' : 'REGRESSION FAILURES\n')+results.join('\n');
 },100);
