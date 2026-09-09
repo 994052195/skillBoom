@@ -13,6 +13,7 @@ export class Enemy extends Phaser.GameObjects.Graphics implements Damageable, Ta
   public readonly radius: number;
   private readonly healthState: Health;
   private readonly speed: number;
+  private airborneVisualRatio = 0;
 
   public constructor(scene: Phaser.Scene, x: number, y: number, public readonly kind: EnemyKind) {
     super(scene);
@@ -66,6 +67,16 @@ export class Enemy extends Phaser.GameObjects.Graphics implements Damageable, Ta
     return died;
   }
 
+  public setAirborneVisual(active: boolean, remainingRatio: number): void {
+    const ratio = active ? Phaser.Math.Clamp(remainingRatio, 0, 1) : 0;
+    this.airborneVisualRatio = ratio;
+    this.displayOriginX = 0;
+    this.displayOriginY = active ? -Math.round(16 * ratio) : 0;
+    this.setRotation(active ? (1 - ratio) * 0.18 - 0.09 : 0);
+    this.setAlpha(active ? 0.72 + ratio * 0.28 : 1);
+    this.redraw();
+  }
+
   private redraw(): void {
     this.clear();
 
@@ -109,6 +120,7 @@ export class Enemy extends Phaser.GameObjects.Graphics implements Damageable, Ta
     }
 
     this.drawHealthBar(color);
+    this.drawAirborneHighlight(color);
   }
 
   private drawBuffMonster(): void {
@@ -129,6 +141,7 @@ export class Enemy extends Phaser.GameObjects.Graphics implements Damageable, Ta
     this.fillCircle(-12, -4, 4);
     this.fillCircle(12, -4, 4);
     this.drawHealthBar(color);
+    this.drawAirborneHighlight(color);
   }
 
   private drawHealthBar(color: number): void {
@@ -138,6 +151,17 @@ export class Enemy extends Phaser.GameObjects.Graphics implements Damageable, Ta
     this.fillRect(-width / 2, y, width, 4);
     this.fillStyle(color, 1);
     this.fillRect(-width / 2, y, width * this.healthState.ratio, 4);
+  }
+
+  private drawAirborneHighlight(color: number): void {
+    if (this.airborneVisualRatio <= 0) {
+      return;
+    }
+
+    this.lineStyle(2, 0xffffff, 0.18 + this.airborneVisualRatio * 0.26);
+    this.strokeCircle(0, 0, this.radius + 6);
+    this.lineStyle(1, color, 0.3 + this.airborneVisualRatio * 0.32);
+    this.strokeCircle(0, 0, this.radius + 11);
   }
 }
 

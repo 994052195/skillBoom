@@ -1,4 +1,4 @@
-import { GAME_BALANCE } from '../config';
+import { GAME_BALANCE, STEEL_TEMPEST_BALANCE } from '../config';
 import type { CombatStats, UpgradeDefinition, UpgradeId } from '../types';
 
 export const UPGRADES: readonly UpgradeDefinition[] = [
@@ -21,6 +21,7 @@ function compound(base: number, multiplier: number, rank: number): number {
 
 export function statsFor(ranks: UpgradeRanks): CombatStats {
   return {
+    primaryAttack: 'projectile',
     moveSpeed: compound(GAME_BALANCE.playerSpeed, 1.12, ranks.quickstep ?? 0),
     attackIntervalMs: compound(GAME_BALANCE.playerAttackIntervalMs, 0.88, ranks['rapid-fire'] ?? 0),
     projectileDamage: GAME_BALANCE.projectileDamage + 10 * (ranks['power-shot'] ?? 0),
@@ -29,6 +30,10 @@ export function statsFor(ranks: UpgradeRanks): CombatStats {
     maxHealth: GAME_BALANCE.playerHealth + 25 * (ranks['vital-core'] ?? 0),
     pierceCount: ranks['piercing-shot'] ?? 0,
     bladeCount: ranks['orbit-blades'] ?? 0,
+    slashLength: STEEL_TEMPEST_BALANCE.slashLength,
+    steelTempestBonusDamage: 0,
+    tornadoPierceCount: STEEL_TEMPEST_BALANCE.tornadoPierceCount,
+    airborneDurationMs: STEEL_TEMPEST_BALANCE.airborneDurationMs,
   };
 }
 

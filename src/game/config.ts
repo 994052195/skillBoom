@@ -38,6 +38,14 @@ export const GAME_BALANCE = {
   buffSpawnEvery: 12,
 } as const;
 
+export const STEEL_TEMPEST_BALANCE = {
+  slashLength: 320,
+  slashWidth: 36,
+  slashLifetimeMs: 100,
+  tornadoPierceCount: 3,
+  airborneDurationMs: 700,
+} as const;
+
 export const NEON_COLORS = {
   world: 0x07111f,
   grid: 0x113c58,

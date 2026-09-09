@@ -38,6 +38,8 @@ export interface EnemySpawn {
 
 export type UpgradeId = 'rapid-fire' | 'power-shot' | 'multishot' | 'swift-projectiles' | 'quickstep' | 'vital-core' | 'piercing-shot' | 'orbit-blades';
 
+export type PrimaryAttackId = 'projectile' | 'steel-tempest';
+
 export interface UpgradeDefinition {
   id: UpgradeId;
   name: string;
@@ -51,6 +53,7 @@ export interface UpgradeChoice extends UpgradeDefinition {
 }
 
 export interface CombatStats {
+  primaryAttack: PrimaryAttackId;
   moveSpeed: number;
   attackIntervalMs: number;
   projectileDamage: number;
@@ -59,4 +62,8 @@ export interface CombatStats {
   maxHealth: number;
   pierceCount: number;
   bladeCount: number;
+  slashLength: number;
+  steelTempestBonusDamage: number;
+  tornadoPierceCount: number;
+  airborneDurationMs: number;
 }
