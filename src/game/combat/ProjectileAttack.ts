@@ -7,7 +7,7 @@ import type { AttackPattern } from './AttackPattern';
 
 export class ProjectileAttack implements AttackPattern {
   public readonly id = 'projectile' as const;
-  private readonly projectiles: Array<{ projectile: Projectile; pierceCount: number }> = [];
+  private readonly projectiles: Projectile[] = [];
 
   public constructor(
     private readonly scene: Phaser.Scene,
@@ -15,13 +15,7 @@ export class ProjectileAttack implements AttackPattern {
   ) {}
 
   public get activeProjectileCount(): number {
-    return this.projectiles.filter(({ projectile }) => projectile.isAlive()).length;
-  }
-
-  public projectilePierceCounts(): number[] {
-    return this.projectiles
-      .filter(({ projectile }) => projectile.isAlive())
-      .map(({ pierceCount }) => pierceCount);
+    return this.projectiles.filter((projectile) => projectile.isAlive()).length;
   }
 
   public attack(target: Targetable, stats: CombatStats): void {
@@ -36,12 +30,12 @@ export class ProjectileAttack implements AttackPattern {
         angleOffset: (index - midpoint) * spread,
       });
 
-      this.projectiles.push({ projectile, pierceCount: stats.pierceCount });
+      this.projectiles.push(projectile);
     }
   }
 
   public update(deltaMs: number, enemies: readonly Enemy[], damageEnemy: (enemy: Enemy, damage: number) => void): void {
-    for (const { projectile } of this.projectiles) {
+    for (const projectile of this.projectiles) {
       projectile.update(deltaMs);
     }
 
@@ -50,7 +44,7 @@ export class ProjectileAttack implements AttackPattern {
   }
 
   public destroy(): void {
-    for (const { projectile } of this.projectiles) {
+    for (const projectile of this.projectiles) {
       projectile.destroy();
     }
 
@@ -58,14 +52,17 @@ export class ProjectileAttack implements AttackPattern {
   }
 
   private resolveHits(enemies: readonly Enemy[], damageEnemy: (enemy: Enemy, damage: number) => void): void {
-    for (const { projectile } of this.projectiles) {
+    for (const projectile of this.projectiles) {
       if (!projectile.isAlive()) {
         continue;
       }
 
-      const contacts = enemies.map((enemy) => ({ enemy, time: projectile.hitTime(enemy) }))
-        .filter((contact): contact is { enemy: Enemy; time: number } => contact.time !== null)
-        .sort((a, b) => a.time - b.time);
+      const contacts: { enemy: Enemy; time: number }[] = [];
+      for (const enemy of enemies) {
+        const time = projectile.hitTime(enemy);
+        if (time !== null) contacts.push({ enemy, time });
+      }
+      contacts.sort((a, b) => a.time - b.time);
       for (const { enemy } of contacts) {
         if (!projectile.isAlive()) break;
         if (enemy.isAlive() && projectile.registerHit(enemy)) damageEnemy(enemy, projectile.damage);
@@ -75,8 +72,8 @@ export class ProjectileAttack implements AttackPattern {
 
   private removeExpiredProjectiles(): void {
     for (let index = this.projectiles.length - 1; index >= 0; index -= 1) {
-      if (this.projectiles[index].projectile.isExpired(WORLD_BOUNDS)) {
-        this.projectiles[index].projectile.destroy();
+      if (this.projectiles[index].isExpired(WORLD_BOUNDS)) {
+        this.projectiles[index].destroy();
         this.projectiles.splice(index, 1);
       }
     }
